@@ -1,39 +1,60 @@
-# Project waritally
+# Waritally - Intelligent Expense Sharing Platform
 
-One Paragraph of project description goes here
+Waritally aims to revolutionize shared expense management with a smart, location-aware approach that goes beyond simple calculations.
+
+## Project Structure
+
+```
+waritally/
+├── cmd/                       # Application entrypoints
+│   ├── api/                   # API server
+│   └── web/                   # Web UI components
+├── internal/                  # Private application code
+│   ├── domain/                # Domain models and interfaces
+│   │   ├── user/              # User domain
+│   │   ├── activity/          # Activity domain
+│   │   └── expense/           # Expense domain
+│   ├── infra/                 # Infrastructure implementations
+│   │   └── storage/           # Storage implementations
+│   └── server/                # Server components
+│       ├── handlers/          # HTTP handlers
+│       ├── logger/            # Logging package
+│       ├── config.go          # Server configuration
+│       ├── routes.go          # HTTP routing
+│       └── server.go          # Server definition
+└── migrations/                # Database migrations
+```
 
 ## Getting Started
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. See deployment for notes on how to deploy the project on a live system.
+### Prerequisites
 
-## MakeFile
+- Go 1.23+
+- SQLite (for development)
 
-Run build make command with tests
-```bash
-make all
+### Running the Application
+
+1. Copy `.env.example` to `.env` and configure as needed
+2. Run the application:
+
 ```
-
-Build the application
-```bash
-make build
-```
-
-Run the application
-```bash
 make run
 ```
 
-Live reload the application:
-```bash
-make watch
+3. For development with hot reload:
+
+```
+make dev
 ```
 
-Run the test suite:
-```bash
-make test
+### Building
+
+To build the application:
+
+```
+make build
 ```
 
-Clean up binary from the last build:
-```bash
-make clean
-```
+## Development Roadmap
+
+See the `GAMEPLAN.md` file for our feature-driven implementation plan.

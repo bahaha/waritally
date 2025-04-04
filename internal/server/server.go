@@ -3,31 +3,41 @@ package server
 import (
 	"fmt"
 	"net/http"
-	"os"
-	"strconv"
 	"time"
 
-	_ "github.com/joho/godotenv/autoload"
+	"waritally/internal/server/logger"
 )
 
+// Server represents our main application server
 type Server struct {
-	port int
+	cfg    *ServerConfig
+	logger logger.Logger
+	
+	// In future we'll add:
+	// - repositories
+	// - services
+	// - other dependencies 
 }
 
-func NewServer() *http.Server {
-	port, _ := strconv.Atoi(os.Getenv("PORT"))
-	NewServer := &Server{
-		port: port,
+// NewServer creates a new HTTP server with all dependencies
+func NewServer(
+	cfg *ServerConfig,
+	logger logger.Logger,
+	// Additional dependencies will be added here
+) *http.Server {
+	server := &Server{
+		cfg:    cfg,
+		logger: logger,
 	}
 
-	// Declare Server config
-	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", NewServer.port),
-		Handler:      NewServer.RegisterRoutes(),
+	// Create and configure the HTTP server
+	httpServer := &http.Server{
+		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
+		Handler:      server.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
 
-	return server
+	return httpServer
 }

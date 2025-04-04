@@ -2,20 +2,23 @@ package server
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 
-	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+
 	"waritally/cmd/web"
+	// "waritally/internal/server/handlers"
 )
 
+// RegisterRoutes sets up all the routes for our application
 func (s *Server) RegisterRoutes() http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
 
+	// Middleware
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"https://*", "http://*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
@@ -24,24 +27,40 @@ func (s *Server) RegisterRoutes() http.Handler {
 		MaxAge:           300,
 	}))
 
-	r.Get("/", s.HelloWorldHandler)
-
+	// Static assets
 	fileServer := http.FileServer(http.FS(web.Files))
 	r.Handle("/assets/*", fileServer)
-	r.Get("/web", templ.Handler(web.HelloForm()).ServeHTTP)
-	r.Post("/hello", web.HelloWebHandler)
+
+	// Health check and root path
+	r.Get("/health", s.healthCheck)
+	r.Get("/", s.handleHome)
+
+	// API routes - to be expanded later
+	r.Route("/api", func(r chi.Router) {
+		// In future, we'll add:
+		// r.Route("/users", s.userRoutes)
+		// r.Route("/activities", s.activityRoutes)
+		// r.Route("/expenses", s.expenseRoutes)
+	})
 
 	return r
 }
 
-func (s *Server) HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
-	resp := make(map[string]string)
-	resp["message"] = "Hello World"
+// healthCheck provides a simple health check endpoint
+func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
 
-	jsonResp, err := json.Marshal(resp)
-	if err != nil {
-		log.Fatalf("error handling JSON marshal. Err: %v", err)
+// handleHome handles the root path
+func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
+	resp := map[string]string{"message": "Welcome to Waritally API"}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		s.logger.Error("api", err, "failed to encode response")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
 	}
-
-	_, _ = w.Write(jsonResp)
 }

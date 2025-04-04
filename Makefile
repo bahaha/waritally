@@ -1,57 +1,82 @@
-# Simple Makefile for a Go project
+# Makefile for Waritally project
 
-# Build the application
-all: build test
-templ-install:
+# Go settings
+BINARY_NAME=waritally
+MAIN_PACKAGE=./cmd/api
+GOFLAGS=-ldflags="-s -w"
+
+# Environment
+ENV_FILE=.env
+
+# Dependencies
+.PHONY: deps
+deps:
+	@echo "Installing dependencies..."
+	@go mod download
+	@go mod tidy
+
+# Install development tools
+.PHONY: tools
+tools:
+	@echo "Installing development tools..."
 	@if ! command -v templ > /dev/null; then \
-		read -p "Go's 'templ' is not installed on your machine. Do you want to install it? [Y/n] " choice; \
-		if [ "$$choice" != "n" ] && [ "$$choice" != "N" ]; then \
-			go install github.com/a-h/templ/cmd/templ@latest; \
-			if [ ! -x "$$(command -v templ)" ]; then \
-				echo "templ installation failed. Exiting..."; \
-				exit 1; \
-			fi; \
-		else \
-			echo "You chose not to install templ. Exiting..."; \
-			exit 1; \
-		fi; \
+		echo "Installing templ..."; \
+		go install github.com/a-h/templ/cmd/templ@latest; \
+	fi
+	@if ! command -v air > /dev/null; then \
+		echo "Installing air..."; \
+		go install github.com/air-verse/air@latest; \
 	fi
 
-build: templ-install
-	@echo "Building..."
+# Generate templ files
+.PHONY: templates
+templates:
+	@echo "Generating templates..."
 	@templ generate
-	
-	@go build -o main cmd/api/main.go
+
+# Build the application
+.PHONY: build
+build: deps templates
+	@echo "Building $(BINARY_NAME)..."
+	@go build $(GOFLAGS) -o $(BINARY_NAME) $(MAIN_PACKAGE)
 
 # Run the application
-run:
-	@go run cmd/api/main.go
+.PHONY: run
+run: build
+	@echo "Running $(BINARY_NAME)..."
+	@./$(BINARY_NAME)
+
+# Run with hot reload using air
+.PHONY: dev
+dev: tools templates
+	@echo "Running with hot reload..."
+	@air
 
 # Test the application
+.PHONY: test
 test:
-	@echo "Testing..."
-	@go test ./... -v
+	@echo "Running tests..."
+	@go test -v ./...
 
-# Clean the binary
+# Clean build artifacts
+.PHONY: clean
 clean:
 	@echo "Cleaning..."
-	@rm -f main
+	@rm -f $(BINARY_NAME)
+	@go clean
 
-# Live Reload
-watch:
-	@if command -v air > /dev/null; then \
-            air; \
-            echo "Watching...";\
-        else \
-            read -p "Go's 'air' is not installed on your machine. Do you want to install it? [Y/n] " choice; \
-            if [ "$$choice" != "n" ] && [ "$$choice" != "N" ]; then \
-                go install github.com/air-verse/air@latest; \
-                air; \
-                echo "Watching...";\
-            else \
-                echo "You chose not to install air. Exiting..."; \
-                exit 1; \
-            fi; \
-        fi
+# Set up initial database (to be implemented)
+.PHONY: db-setup
+db-setup:
+	@echo "Setting up database..."
+	@echo "To be implemented"
 
-.PHONY: all build run test clean watch templ-install
+# Run database migrations (to be implemented)
+.PHONY: db-migrate
+db-migrate:
+	@echo "Running migrations..."
+	@echo "To be implemented"
+
+# Default target
+.PHONY: all
+all: build

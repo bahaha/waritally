@@ -3,55 +3,84 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"io"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	_ "github.com/joho/godotenv/autoload"
 	"waritally/internal/server"
+	"waritally/internal/server/logger"
 )
 
-func gracefulShutdown(apiServer *http.Server, done chan bool) {
-	// Create context that listens for the interrupt signal from the OS.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	// Listen for the interrupt signal.
-	<-ctx.Done()
-
-	log.Println("shutting down gracefully, press Ctrl+C again to force")
-
-	// The context is used to inform the server it has 5 seconds to finish
-	// the request it is currently handling
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := apiServer.Shutdown(ctx); err != nil {
-		log.Printf("Server forced to shutdown with error: %v", err)
+func main() {
+	ctx := context.Background()
+	if err := run(ctx, os.Args, os.Getenv, os.Stdin, os.Stdout, os.Stderr); err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
 	}
-
-	log.Println("Server exiting")
-
-	// Notify the main goroutine that the shutdown is complete
-	done <- true
 }
 
-func main() {
+func run(
+	ctx context.Context,
+	args []string,
+	getenv func(string) string,
+	stdin io.Reader,
+	stdout, stderr io.Writer,
+) error {
+	// Set up signal handling for graceful shutdown
+	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
 
-	server := server.NewServer()
+	// Initialize logger
+	log := logger.NewZerologLogger(stdout, getenv("APP_ENV") != "production")
 
-	// Create a done channel to signal when the shutdown is complete
-	done := make(chan bool, 1)
+	// Generate correlation ID for this process
+	correlationID := log.NewCorrelationID()
+	processLog := log.With("process_id", correlationID)
 
-	// Run graceful shutdown in a separate goroutine
-	go gracefulShutdown(server, done)
+	processLog.Info("main", "Starting Waritally application")
 
-	err := server.ListenAndServe()
-	if err != nil && err != http.ErrServerClosed {
-		panic(fmt.Sprintf("http server error: %s", err))
+	// Load config from environment
+	cfg, err := server.LoadConfig(getenv)
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Wait for the graceful shutdown to complete
-	<-done
-	log.Println("Graceful shutdown complete.")
+	// Initialize server with dependencies
+	srv := server.NewServer(cfg, log)
+
+	// Start server in a goroutine
+	serverError := make(chan error, 1)
+	go func() {
+		processLog.Info("server", "starting server", "addr", srv.Addr)
+
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverError <- fmt.Errorf("could not start server: %w", err)
+			return
+		}
+
+		serverError <- nil
+	}()
+
+	// Wait for interrupt signal or server error
+	select {
+	case err := <-serverError:
+		return err
+	case <-ctx.Done():
+		processLog.Info("server", "shutting down server gracefully, press <C-c> again to force")
+
+		// Create a timeout context for shutdown
+		shutdownCtx, stop := context.WithTimeout(context.Background(), 5*time.Second)
+		defer stop()
+
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("server forced to shutdown with error: %w", err)
+		}
+
+		processLog.Info("server", "shutdown complete")
+		return nil
+	}
 }
