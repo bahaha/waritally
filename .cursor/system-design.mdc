@@ -1,0 +1,679 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Waritally - System Design Document
+
+## Requirements
+
+### Core Requirements
+
+1. **User Management**
+   - Anonymous user mode initially, with future migration path to authentication
+   - Profile management with currency preferences
+   - Activity participation through tokens
+
+2. **Activity Management**
+   - Creation and configuration of shared expense activities
+   - Member invitation and role management
+   - Activity lifecycle (active, archived)
+
+3. **Expense Management**
+   - Quick and detailed expense entry
+   - Multiple splitting methods (equal, percentage, custom, item-level)
+   - Multi-currency support
+   - Location tagging
+
+4. **Location Intelligence**
+   - Google Maps integration
+   - Itinerary creation from expense locations
+   - Location-based recommendations
+
+5. **Settlement System**
+   - Balance calculation
+   - Optimized settlement recommendations
+   - Settlement status tracking
+
+### Key Priorities
+
+- **Simple and Maintainable**: Favor simplicity over complexity
+- **Interface-First**: Define clear interfaces with multiple possible implementations
+- **Pragmatic Development**: Defer abstraction until patterns clearly emerge
+- **Clear Boundaries**: Establish domain boundaries with explicit contracts
+- **Implementation Flexibility**: Enable easy switching between implementations
+
+## Architecture
+
+### Core Principles
+
+1. **Interface-First Design**
+   - Define clear interfaces before implementations
+   - Keep interfaces small and focused on specific domain capabilities
+   - Allow for multiple implementations of each interface
+
+2. **Bounded Contexts**
+   - Clearly define boundaries between system components
+   - Minimize dependencies between contexts
+   - Use explicit contracts for cross-context communication
+
+3. **Pragmatic Simplicity**
+   - Allow reasonable duplication over premature abstraction
+   - Abstract only when a clear pattern emerges multiple times
+   - Value readability and maintainability over cleverness
+
+### Technology Stack
+
+- **Frontend**:
+  - HTMX for interactive UI without heavy JavaScript
+  - Go Templ for server-side templating
+  - Tailwind CSS for styling
+  - Minimal vanilla JavaScript for enhanced interactions
+
+- **Backend**:
+  - Go for server implementation
+  - gorilla/mux for routing
+  - sqlc for type-safe SQL query generation
+  - SQLite for database
+
+- **External Integrations**:
+  - Google Maps API for location services
+  - Exchange rate API for currency conversion
+
+### System Structure
+
+```
+Waritally/
+├── cmd/
+│   └── server/                  # Application entry point
+├── internal/
+│   ├── domain/                  # Domain models and interfaces
+│   │   ├── user/                # User domain
+│   │   ├── activity/            # Activity domain
+│   │   ├── expense/             # Expense domain
+│   │   ├── location/            # Location domain
+│   │   └── settlement/          # Settlement domain
+│   ├── infra/                   # Infrastructure implementations
+│   │   ├── storage/             # Storage implementations
+│   │   ├── auth/                # Auth implementations
+│   │   ├── maps/                # Map service implementations
+│   │   └── currency/            # Currency service implementations
+│   └── api/                     # API handlers
+├── web/
+│   ├── static/                  # Static assets
+│   └── templates/               # Go Templ templates
+└── migrations/                  # Database migrations
+```
+
+## Data Model
+
+### User Domain
+
+```sql
+-- Users table (auth-ready)
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    public_id TEXT UNIQUE NOT NULL, -- UUID for public reference
+    name TEXT NOT NULL,
+    email TEXT UNIQUE,              -- NULL for anonymous users
+    auth_provider TEXT,             -- NULL for anonymous users
+    auth_id TEXT,                   -- NULL for anonymous users
+    device_id TEXT,                 -- Temporary for anonymous users
+    avatar_url TEXT,
+    preferred_currency TEXT DEFAULT 'USD',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create unique index on auth provider and ID combination
+CREATE UNIQUE INDEX idx_users_auth ON users(auth_provider, auth_id) 
+WHERE auth_provider IS NOT NULL AND auth_id IS NOT NULL;
+```
+
+### Activity Domain
+
+```sql
+-- Activities table
+CREATE TABLE activities (
+    id INTEGER PRIMARY KEY,
+    public_id TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    start_date TIMESTAMP,
+    end_date TIMESTAMP,
+    primary_currency TEXT DEFAULT 'USD',
+    creator_id TEXT NOT NULL, -- References user's public_id
+    access_token TEXT NOT NULL,
+    admin_token TEXT NOT NULL,
+    is_archived BOOLEAN DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (creator_id) REFERENCES users(public_id)
+);
+
+-- Activity members table
+CREATE TABLE activity_members (
+    activity_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    role TEXT DEFAULT 'contributor', -- 'creator', 'admin', 'contributor', 'view-only'
+    status TEXT DEFAULT 'active', -- 'active', 'inactive'
+    join_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (activity_id, user_id),
+    FOREIGN KEY (activity_id) REFERENCES activities(public_id),
+    FOREIGN KEY (user_id) REFERENCES users(public_id)
+);
+```
+
+### Expense Domain
+
+```sql
+-- Categories
+CREATE TABLE categories (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    icon TEXT NOT NULL
+);
+
+-- Expenses
+CREATE TABLE expenses (
+    id INTEGER PRIMARY KEY,
+    public_id TEXT UNIQUE NOT NULL,
+    activity_id TEXT NOT NULL,
+    payer_id TEXT NOT NULL,
+    amount REAL NOT NULL,
+    original_currency TEXT NOT NULL,
+    exchange_rate REAL DEFAULT 1.0,
+    category_id INTEGER,
+    description TEXT,
+    expense_date TIMESTAMP NOT NULL,
+    location_id INTEGER,
+    is_detailed BOOLEAN DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (activity_id) REFERENCES activities(public_id),
+    FOREIGN KEY (payer_id) REFERENCES users(public_id),
+    FOREIGN KEY (category_id) REFERENCES categories(id),
+    FOREIGN KEY (location_id) REFERENCES locations(id)
+);
+
+-- Expense participants
+CREATE TABLE expense_participants (
+    expense_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    share_amount REAL NOT NULL,
+    share_percentage REAL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (expense_id, user_id),
+    FOREIGN KEY (expense_id) REFERENCES expenses(public_id),
+    FOREIGN KEY (user_id) REFERENCES users(public_id)
+);
+
+-- Line items
+CREATE TABLE line_items (
+    id INTEGER PRIMARY KEY,
+    expense_id TEXT NOT NULL,
+    description TEXT NOT NULL,
+    amount REAL NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (expense_id) REFERENCES expenses(public_id)
+);
+
+-- Line item participants
+CREATE TABLE line_item_participants (
+    line_item_id INTEGER NOT NULL,
+    user_id TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (line_item_id, user_id),
+    FOREIGN KEY (line_item_id) REFERENCES line_items(id),
+    FOREIGN KEY (user_id) REFERENCES users(public_id)
+);
+```
+
+### Location Domain
+
+```sql
+-- Locations
+CREATE TABLE locations (
+    id INTEGER PRIMARY KEY,
+    public_id TEXT UNIQUE NOT NULL,
+    activity_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    address TEXT,
+    latitude REAL,
+    longitude REAL,
+    place_id TEXT, -- Google Maps place ID
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (activity_id) REFERENCES activities(public_id)
+);
+```
+
+### Settlement Domain
+
+```sql
+-- Settlements
+CREATE TABLE settlements (
+    id INTEGER PRIMARY KEY,
+    public_id TEXT UNIQUE NOT NULL,
+    activity_id TEXT NOT NULL,
+    from_user_id TEXT NOT NULL,
+    to_user_id TEXT NOT NULL,
+    amount REAL NOT NULL,
+    currency TEXT NOT NULL,
+    status TEXT DEFAULT 'pending', -- 'pending', 'completed'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (activity_id) REFERENCES activities(public_id),
+    FOREIGN KEY (from_user_id) REFERENCES users(public_id),
+    FOREIGN KEY (to_user_id) REFERENCES users(public_id)
+);
+```
+
+## Interfaces
+
+### Storage Interfaces
+
+```go
+// UserRepository defines operations for user persistence
+type UserRepository interface {
+    FindByID(ctx context.Context, id string) (*User, error)
+    FindByDeviceID(ctx context.Context, deviceID string) (*User, error)
+    Create(ctx context.Context, user *User) error
+    Update(ctx context.Context, user *User) error
+}
+
+// ActivityRepository defines operations for activity persistence
+type ActivityRepository interface {
+    FindByID(ctx context.Context, id string) (*Activity, error)
+    FindByToken(ctx context.Context, token string) (*Activity, error)
+    FindForUser(ctx context.Context, userID string) ([]*Activity, error)
+    Create(ctx context.Context, activity *Activity) error
+    Update(ctx context.Context, activity *Activity) error
+}
+
+// ExpenseRepository defines operations for expense persistence
+type ExpenseRepository interface {
+    FindByID(ctx context.Context, id string) (*Expense, error)
+    FindForActivity(ctx context.Context, activityID string) ([]*Expense, error)
+    Create(ctx context.Context, expense *Expense) error
+    Update(ctx context.Context, expense *Expense) error
+    Delete(ctx context.Context, id string) error
+}
+
+// LocationRepository defines operations for location persistence
+type LocationRepository interface {
+    FindByID(ctx context.Context, id string) (*Location, error)
+    FindForActivity(ctx context.Context, activityID string) ([]*Location, error)
+    Create(ctx context.Context, location *Location) error
+    Update(ctx context.Context, location *Location) error
+}
+
+// SettlementRepository defines operations for settlement persistence
+type SettlementRepository interface {
+    FindByID(ctx context.Context, id string) (*Settlement, error)
+    FindForActivity(ctx context.Context, activityID string) ([]*Settlement, error)
+    Create(ctx context.Context, settlement *Settlement) error
+    UpdateStatus(ctx context.Context, id string, status string) error
+}
+```
+
+### External Service Interfaces
+
+```go
+// LocationService defines operations for location intelligence
+type LocationService interface {
+    SearchPlaces(ctx context.Context, query string) ([]*Place, error)
+    GetPlaceDetails(ctx context.Context, placeID string) (*Place, error)
+    GetNearbyPlaces(ctx context.Context, lat, lng float64, radius int) ([]*Place, error)
+}
+
+// CurrencyConverter defines operations for currency conversion
+type CurrencyConverter interface {
+    Convert(ctx context.Context, amount float64, from, to string) (float64, error)
+    GetExchangeRate(ctx context.Context, from, to string) (float64, error)
+    GetSupportedCurrencies(ctx context.Context) ([]string, error)
+}
+
+// Possible implementations:
+// - GoogleMapsLocationService
+// - MockLocationService
+// - OpenExchangeRatesCurrencyConverter
+// - FixedRatesCurrencyConverter
+```
+
+### Authentication Interfaces
+
+```go
+// IdentityProvider defines operations for user identity management
+type IdentityProvider interface {
+    GetCurrentUserID(ctx context.Context) (string, error)
+    CreateAnonymousUser(ctx context.Context, name string, deviceID string) (string, error)
+    // Future OAuth methods would be added here
+}
+
+// TokenService defines operations for token management
+type TokenService interface {
+    CreateToken(ctx context.Context, userID string) (string, error)
+    ValidateToken(ctx context.Context, token string) (string, error)
+    CreateActivityToken(ctx context.Context) (string, error)
+}
+
+// Possible implementations:
+// - JWTTokenService
+// - DeviceBasedIdentityProvider
+// - OAuthIdentityProvider (future)
+```
+
+### Domain Service Interfaces
+
+```go
+// ActivityService defines operations for activity management
+type ActivityService interface {
+    CreateActivity(ctx context.Context, input ActivityInput) (*Activity, error)
+    GetActivity(ctx context.Context, id string) (*Activity, error)
+    JoinActivity(ctx context.Context, token string, userID string) error
+    GetMemberActivities(ctx context.Context, userID string) ([]*Activity, error)
+}
+
+// ExpenseService defines operations for expense management
+type ExpenseService interface {
+    AddExpense(ctx context.Context, activityID string, expenseInput ExpenseInput) (*Expense, error)
+    SplitExpense(ctx context.Context, expenseID string, splitMethod string, participants []string) error
+    GetActivityExpenses(ctx context.Context, activityID string) ([]*Expense, error)
+}
+
+// SettlementService defines operations for settlements
+type SettlementService interface {
+    CalculateBalances(ctx context.Context, activityID string) (map[string]float64, error)
+    GetOptimizedSettlements(ctx context.Context, activityID string) ([]*Settlement, error)
+    MarkSettlementComplete(ctx context.Context, settlementID string) error
+}
+```
+
+### Infrastructure Service Interfaces
+
+```go
+// MessageQueue interface for async operations
+type MessageQueue interface {
+    Publish(ctx context.Context, topic string, message interface{}) error
+    Subscribe(ctx context.Context, topic string, handler func(message interface{}) error) error
+}
+
+// ImageStorage for receipt and memory photos
+type ImageStorage interface {
+    Store(ctx context.Context, data []byte, contentType string) (string, error)
+    Retrieve(ctx context.Context, id string) ([]byte, string, error)
+    Delete(ctx context.Context, id string) error
+}
+
+// Possible implementations:
+// - RedisMessageQueue
+// - InMemoryMessageQueue
+// - LocalFileImageStorage
+// - S3ImageStorage
+```
+
+### Example Implementation with Interfaces
+
+#### Repository Implementation Example
+
+```go
+// SQLiteUserRepository implements UserRepository
+type SQLiteUserRepository struct {
+    db *sql.DB
+}
+
+func NewSQLiteUserRepository(db *sql.DB) *SQLiteUserRepository {
+    return &SQLiteUserRepository{db: db}
+}
+
+func (r *SQLiteUserRepository) FindByID(ctx context.Context, id string) (*User, error) {
+    query := `SELECT id, public_id, name, email, device_id, preferred_currency FROM users WHERE public_id = ?`
+    row := r.db.QueryRowContext(ctx, query, id)
+    
+    var user User
+    err := row.Scan(&user.ID, &user.PublicID, &user.Name, &user.Email, &user.DeviceID, &user.PreferredCurrency)
+    if err != nil {
+        if err == sql.ErrNoRows {
+            return nil, fmt.Errorf("user not found: %w", err)
+        }
+        return nil, fmt.Errorf("database error: %w", err)
+    }
+    
+    return &user, nil
+}
+
+// Additional methods implemented similarly
+```
+
+#### Service Implementation Example
+
+```go
+// DefaultExpenseService implements ExpenseService
+type DefaultExpenseService struct {
+    expenseRepo ExpenseRepository
+    activityRepo ActivityRepository
+    userRepo UserRepository
+    currencyConverter CurrencyConverter
+}
+
+func NewExpenseService(
+    expenseRepo ExpenseRepository,
+    activityRepo ActivityRepository,
+    userRepo UserRepository,
+    currencyConverter CurrencyConverter,
+) *DefaultExpenseService {
+    return &DefaultExpenseService{
+        expenseRepo: expenseRepo,
+        activityRepo: activityRepo,
+        userRepo: userRepo,
+        currencyConverter: currencyConverter,
+    }
+}
+
+func (s *DefaultExpenseService) AddExpense(ctx context.Context, activityID string, input ExpenseInput) (*Expense, error) {
+    // Validate activity exists
+    activity, err := s.activityRepo.FindByID(ctx, activityID)
+    if err != nil {
+        return nil, fmt.Errorf("failed to find activity: %w", err)
+    }
+    
+    // Convert currency if needed
+    amount := input.Amount
+    if input.Currency != activity.PrimaryCurrency {
+        convertedAmount, err := s.currencyConverter.Convert(ctx, input.Amount, input.Currency, activity.PrimaryCurrency)
+        if err != nil {
+            return nil, fmt.Errorf("failed to convert currency: %w", err)
+        }
+        amount = convertedAmount
+    }
+    
+    // Create expense
+    expense := &Expense{
+        PublicID: uuid.New().String(),
+        ActivityID: activityID,
+        PayerID: input.PayerID,
+        Amount: amount,
+        OriginalCurrency: input.Currency,
+        ExchangeRate: input.Amount / amount,
+        CategoryID: input.CategoryID,
+        Description: input.Description,
+        ExpenseDate: input.Date,
+        LocationID: input.LocationID,
+    }
+    
+    err = s.expenseRepo.Create(ctx, expense)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create expense: %w", err)
+    }
+    
+    return expense, nil
+}
+
+// Additional methods implemented similarly
+```
+
+#### HTTP Handler Implementation Example
+
+```go
+// ExpenseHandler handles expense-related HTTP requests
+type ExpenseHandler struct {
+    expenseService ExpenseService
+    activityService ActivityService
+    identityProvider IdentityProvider
+    renderer TemplateRenderer
+}
+
+func NewExpenseHandler(
+    expenseService ExpenseService,
+    activityService ActivityService,
+    identityProvider IdentityProvider,
+    renderer TemplateRenderer,
+) *ExpenseHandler {
+    return &ExpenseHandler{
+        expenseService: expenseService,
+        activityService: activityService,
+        identityProvider: identityProvider,
+        renderer: renderer,
+    }
+}
+
+func (h *ExpenseHandler) HandleAddExpense(w http.ResponseWriter, r *http.Request) {
+    // Get current user
+    userID, err := h.identityProvider.GetCurrentUserID(r.Context())
+    if err != nil {
+        http.Error(w, "Unauthorized", http.StatusUnauthorized)
+        return
+    }
+    
+    // Get activity ID from URL
+    vars := mux.Vars(r)
+    activityID := vars["activityID"]
+    
+    // Parse form data
+    err = r.ParseForm()
+    if err != nil {
+        http.Error(w, "Invalid form data", http.StatusBadRequest)
+        return
+    }
+    
+    // Build expense input
+    input := ExpenseInput{
+        PayerID: userID,
+        Amount: parseFloat(r.FormValue("amount")),
+        Currency: r.FormValue("currency"),
+        Description: r.FormValue("description"),
+        Date: parseDate(r.FormValue("date")),
+        CategoryID: parseInt(r.FormValue("category_id")),
+        LocationID: parseInt(r.FormValue("location_id")),
+    }
+    
+    // Add expense
+    expense, err := h.expenseService.AddExpense(r.Context(), activityID, input)
+    if err != nil {
+        http.Error(w, "Failed to add expense: "+err.Error(), http.StatusInternalServerError)
+        return
+    }
+    
+    // Split expense if split data provided
+    splitMethod := r.FormValue("split_method")
+    if splitMethod != "" {
+        participants := r.Form["participants"]
+        err = h.expenseService.SplitExpense(r.Context(), expense.PublicID, splitMethod, participants)
+        if err != nil {
+            http.Error(w, "Failed to split expense: "+err.Error(), http.StatusInternalServerError)
+            return
+        }
+    }
+    
+    // Render expense component
+    h.renderer.Render(w, "expenses/item.templ", expense)
+}
+```
+
+## Operations
+
+### Development Workflow
+
+1. **Interface-First Development**
+   - Define domain interfaces before implementation
+   - Create mock implementations for testing
+   - Implement real providers only after interfaces are stable
+
+2. **Testing Strategy**
+   - Use in-memory implementations for unit tests
+   - Inject test doubles through interfaces
+   - Test handlers with mock services
+   - Integration tests for critical flows
+
+3. **Configuration-Driven Infrastructure**
+   - Use environment variables or config files to select implementations
+   - Development mode with simplified implementations
+   - Production mode with optimized implementations
+
+### Testing Examples
+
+```go
+// Mock implementation for testing
+type MockExpenseService struct {
+    AddExpenseFn func(ctx context.Context, activityID string, input ExpenseInput) (*Expense, error)
+    SplitExpenseFn func(ctx context.Context, expenseID string, splitMethod string, participants []string) error
+    GetActivityExpensesFn func(ctx context.Context, activityID string) ([]*Expense, error)
+}
+
+func (m *MockExpenseService) AddExpense(ctx context.Context, activityID string, input ExpenseInput) (*Expense, error) {
+    if m.AddExpenseFn != nil {
+        return m.AddExpenseFn(ctx, activityID, input)
+    }
+    return &Expense{PublicID: "mock-expense"}, nil
+}
+
+// Test example
+func TestHandleAddExpense(t *testing.T) {
+    mockExpenseService := &MockExpenseService{
+        AddExpenseFn: func(ctx context.Context, activityID string, input ExpenseInput) (*Expense, error) {
+            if activityID != "test-activity" {
+                return nil, errors.New("invalid activity")
+            }
+            return &Expense{
+                PublicID: "new-expense",
+                Amount: input.Amount,
+                Description: input.Description,
+            }, nil
+        },
+    }
+    
+    mockIdentityProvider := &MockIdentityProvider{
+        GetCurrentUserIDFn: func(ctx context.Context) (string, error) {
+            return "test-user", nil
+        },
+    }
+    
+    handler := NewExpenseHandler(
+        mockExpenseService,
+        &MockActivityService{},
+        mockIdentityProvider,
+        &MockTemplateRenderer{},
+    )
+    
+    // Create test request
+    form := url.Values{}
+    form.Add("amount", "42.50")
+    form.Add("description", "Test expense")
+    
+    req := httptest.NewRequest("POST", "/activities/test-activity/expenses", strings.NewReader(form.Encode()))
+    req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+    
+    w := httptest.NewRecorder()
+    
+    // Call handler
+    handler.HandleAddExpense(w, req)
+    
+    // Check response
+    resp := w.Result()
+    if resp.StatusCode != http.StatusOK {
+        t.Errorf("Expected status OK, got %v", resp.Status)
+    }
+}
+```

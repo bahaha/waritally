@@ -1,0 +1,367 @@
+---
+description: 
+globs: *.go
+alwaysApply: false
+---
+# Project rules for HTTP Services in Go with Chi, sqlc, and HTMX + Templ
+
+## Rule 1: Use a Constructor Function With Chi Router for Server Initialization
+
+Description:
+
+Initialize your server with a NewServer constructor that takes all dependencies (e.g., logger, sqlc queries, config) and returns an http.Handler using Chi’s router. This ensures explicit dependency injection and leverages Chi’s routing capabilities.
+
+### Good Example
+```go
+package server
+
+import (
+    "net/http"
+    "yourapp/config"
+    "yourapp/logger"
+    "yourapp/db" // sqlc-generated package
+    "github.com/go-chi/chi/v5"
+)
+
+func NewServer(
+    logger *logger.Logger,
+    config *config.Config,
+    queries *db.Queries,
+) http.Handler {
+    r := chi.NewRouter()
+    r.Get("/todos", handlers.ListTodos(logger, queries))
+    r.Post("/todos", handlers.CreateTodo(logger, queries))
+    return r
+}
+```
+- Why it’s good: Uses Chi’s router, passes sqlc Queries as a dependency, and keeps routing modular and testable.
+
+### Bad Example
+```go
+package main
+
+import (
+    "net/http"
+    "yourapp/db"
+    "github.com/go-chi/chi/v5"
+)
+
+var queries *db.Queries // Global variable
+
+func main() {
+    r := chi.NewRouter()
+    r.Get("/todos", func(w http.ResponseWriter, r *http.Request) {
+        // Use global queries directly
+    })
+    http.ListenAndServe(":8080", r)
+}
+```
+- Why it’s bad: Relies on global state for queries, reducing testability and increasing coupling.
+
+## Rule 2: Design Handlers as Functions Returning http.Handler with Templ Rendering
+Description:
+
+Handlers should return `http.Handler`, using closures for dependencies like `sqlc` Queries and rendering views with Go Templ for htmx compatibility. Avoid state in handlers to ensure stability with Chi’s routing.
+
+### Good Example
+```go
+package handlers
+
+import (
+    "net/http"
+    "yourapp/db"
+    "yourapp/logger"
+    "yourapp/views" // Templ-generated package
+)
+
+func ListTodos(logger *logger.Logger, queries *db.Queries) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        todos, err := queries.ListTodos(r.Context())
+        if err != nil {
+            http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+            return
+        }
+        w.Header().Set("Content-Type", "text/html")
+        views.TodoList(todos).Render(r.Context(), w) // Templ rendering
+    })
+}
+```
+- Why it’s good: Stateless, uses sqlc for data access, and renders with Templ for htmx partials, keeping the handler clean.
+
+### Bad Example
+```go
+package handlers
+
+import (
+    "net/http"
+    "yourapp/db"
+)
+
+type TodoHandler struct {
+    queries *db.Queries
+}
+
+func (h *TodoHandler) ListTodos(w http.ResponseWriter, r *http.Request) {
+    todos, _ := h.queries.ListTodos(r.Context())
+    // Render inline HTML without Templ
+    w.Write([]byte("<ul>...</ul>"))
+}
+```
+- Why it’s bad: Ties handler to a struct with state, skips Templ, and uses raw HTML, reducing maintainability and htmx compatibility.
+
+## Rule 3: Implement Middleware with Chi’s Chainable Pattern
+Description:
+
+Use Chi’s middleware pattern to wrap handlers with reusable logic (e.g., authentication), ensuring modularity and compatibility with htmx requests.
+
+### Good Example
+```go
+package middleware
+
+import (
+    "net/http"
+    "yourapp/logger"
+)
+
+func AuthRequired(logger *logger.Logger) func(http.Handler) http.Handler {
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            if !isAuthenticated(r) {
+                logger.Info("Unauthorized access attempt")
+                w.Header().Set("HX-Redirect", "/login") // htmx redirect
+                w.WriteHeader(http.StatusUnauthorized)
+                return
+            }
+            next.ServeHTTP(w, r)
+        })
+    }
+}
+
+// In server setup:
+r.Use(middleware.AuthRequired(logger))
+```
+- Why it’s good: Leverages Chi’s middleware chain, integrates with htmx via headers, and keeps logic reusable.
+
+### Bad Example
+```go
+package handlers
+
+import (
+    "net/http"
+)
+
+func ListTodos(w http.ResponseWriter, r *http.Request) {
+    if !isAuthenticated(r) {
+        http.Redirect(w, r, "/login", http.StatusSeeOther)
+        return
+    }
+    // Handler logic...
+}
+```
+- Why it’s bad: Embeds auth logic in the handler, duplicating code and missing htmx-specific features like `HX-Redirect`.
+
+## Rule 4: Centralize Data Access with sqlc and Templ Rendering
+Description:
+
+Use `sqlc-generated` Queries for data access and Templ for rendering, centralizing logic to avoid repetition and ensure consistency with htmx-driven UIs.
+
+### Good Example
+```go
+package handlers
+
+import (
+    "net/http"
+    "yourapp/db"
+    "yourapp/views"
+)
+
+func CreateTodo(queries *db.Queries) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        params := db.CreateTodoParams{
+            Title: r.FormValue("title"),
+        }
+        todo, err := queries.CreateTodo(r.Context(), params)
+        if err != nil {
+            w.WriteHeader(http.StatusInternalServerError)
+            return
+        }
+        views.TodoItem(todo).Render(r.Context(), w) // htmx partial
+    })
+}
+```
+- Why it’s good: Uses sqlc for type-safe queries and Templ for htmx-compatible rendering, keeping data and view logic centralized.
+
+### Bad Example
+```go
+package handlers
+
+import (
+    "net/http"
+    "database/sql"
+)
+
+func CreateTodo(db *sql.DB) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        title := r.FormValue("title")
+        db.Exec("INSERT INTO todos (title) VALUES ($1)", title)
+        w.Write([]byte("<li>" + title + "</li>"))
+    })
+}
+```
+- Why it’s bad: Uses raw SQL instead of sqlc, skips Templ, and outputs raw HTML, breaking htmx integration and type safety.
+
+## Rule 5: Test End-to-End with Chi and htmx Responses
+Description:
+
+Write end-to-end tests that start the Chi server and verify htmx responses (e.g., partials from Templ), ensuring the full stack works as expected.
+
+### Good Example
+```go
+package main
+
+import (
+    "net/http"
+    "testing"
+    "time"
+    "yourapp/server"
+)
+
+func TestListTodos(t *testing.T) {
+    s := server.NewServer(logger, config, queries)
+    go http.ListenAndServe(":8080", s)
+    time.Sleep(250 * time.Millisecond) // Wait for server
+
+    resp, err := http.Get("http://localhost:8080/todos")
+    if err != nil || resp.StatusCode != http.StatusOK {
+        t.Fatalf("Failed to get todos: %v", err)
+    }
+    if resp.Header.Get("Content-Type") != "text/html" {
+        t.Error("Expected HTML for htmx")
+    }
+}
+```
+- Why it’s good: Tests the full Chi server, checks htmx-compatible HTML responses, and ensures integration.
+
+### Bad Example
+```go
+package handlers
+
+import (
+    "net/http"
+    "testing"
+    "yourapp/db"
+)
+
+func TestListTodos(t *testing.T) {
+    queries := &db.Queries{} // Mocked or real
+    handler := ListTodos(logger, queries)
+    req, _ := http.NewRequest("GET", "/todos", nil)
+    rr := httptest.NewRecorder()
+    handler.ServeHTTP(rr, req)
+}
+```
+- Why it’s bad: Only tests the handler in isolation, missing Chi routing and htmx rendering behavior.
+
+## Rule 6: Support Graceful Shutdown with Chi and Lazy sqlc Initialization
+Description:
+
+Implement graceful shutdown with Chi’s server and defer sqlc connection setup using sync.Once to optimize startup time.
+
+### Good Example
+```go
+package main
+
+import (
+    "context"
+    "net/http"
+    "sync"
+    "time"
+    "yourapp/db"
+    "github.com/go-chi/chi/v5"
+)
+
+var once sync.Once
+var queries *db.Queries
+
+func getQueries(dbConn *sql.DB) *db.Queries {
+    once.Do(func() {
+        queries = db.New(dbConn) // sqlc initialization
+    })
+    return queries
+}
+
+func main() {
+    r := chi.NewRouter()
+    server := &http.Server{Addr: ":8080", Handler: r}
+    go server.ListenAndServe()
+    // Signal handling...
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    server.Shutdown(ctx)
+}
+```
+- Why it’s good: Uses Chi with graceful shutdown and delays sqlc setup, improving startup performance.
+
+### Bad Example
+```go
+package main
+
+import (
+    "net/http"
+    "yourapp/db"
+    "github.com/go-chi/chi/v5"
+)
+
+func main() {
+    queries := db.New(dbConn) // Immediate setup
+    r := chi.NewRouter()
+    http.ListenAndServe(":8080", r)
+}
+```
+- Why it’s bad: No shutdown handling and eager sqlc initialization slow down startup.
+
+## Rule 7: Format Long Dependency Lists Vertically
+Description:
+
+When passing dependencies (e.g., logger, sqlc Queries, config) to functions like NewServer, format arguments vertically for readability.
+
+### Good Example
+```go
+package server
+
+import (
+    "net/http"
+    "yourapp/config"
+    "yourapp/db"
+    "yourapp/logger"
+    "github.com/go-chi/chi/v5"
+)
+
+func NewServer(
+    logger *logger.Logger,
+    config *config.Config,
+    queries *db.Queries,
+) http.Handler {
+    r := chi.NewRouter()
+    // Route setup...
+    return r
+}
+```
+- Why it’s good: Clear, readable dependency list, especially with multiple components like sqlc Queries.
+
+### Bad Example
+```go
+package server
+
+import (
+    "net/http"
+    "yourapp/config"
+    "yourapp/db"
+    "yourapp/logger"
+)
+
+func NewServer(logger *logger.Logger, config *config.Config, queries *db.Queries) http.Handler {
+    // Server setup...
+}
+```
+- Why it’s bad: Horizontal list becomes unreadable as dependencies grow, common with sqlc and Chi setups.

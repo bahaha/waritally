@@ -1,0 +1,403 @@
+---
+description: 
+globs: *.go
+alwaysApply: false
+---
+## Rule 1: Initialize Logger Once
+Description: Use sync.Once for thread-safe initialization, setting zerolog.ErrorStackMarshaler and zerolog.TimeFieldFormat.
+
+### Good Example:
+```go
+package main
+import "sync"
+import "github.com/rs/zerolog"
+import "github.com/rs/zerolog/log"
+import "os"
+
+var once sync.Once
+
+func getLogger() zerolog.Logger {
+    once.Do(func() {
+        zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+        log.Logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
+    })
+    return log.Logger
+}
+
+func main() {
+    logger := getLogger()
+    logger.Info().Msg("Started")
+}
+```
+
+### Bad Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Logger = zerolog.New(os.Stdout).With().Timestamp().Logger() // Bad: Reinitialized every call
+    log.Info().Msg("Started")
+}
+```
+
+## Rule 2: Environment-Based Logging
+Description: Use APP_ENV to switch between ConsoleWriter for dev and file logging for prod (e.g., with lumberjack).
+
+### Good Example:
+```go
+package main
+import "os"
+import "github.com/rs/zerolog"
+
+func getLogger() zerolog.Logger {
+    var writer zerolog.ConsoleWriter
+    if os.Getenv("APP_ENV") == "production" {
+        writer = zerolog.New(os.Stdout).Output(os.Stdout)
+    } else {
+        writer = zerolog.ConsoleWriter{Out: os.Stdout}
+    }
+    return zerolog.New(writer).With().Timestamp().Logger()
+}
+```
+
+### Bad Example:
+```go
+package main
+import "github.com/rs/zerolog"
+
+func getLogger() zerolog.Logger {
+    return zerolog.New(os.Stdout).With().Timestamp().Logger() // Bad: No env distinction
+}
+```
+
+## Rule 3: Include Build Metadata
+Description: Add git_revision and go_version using debug.ReadBuildInfo() for traceability.
+
+### Good Example:
+```go
+package main
+import "runtime/debug"
+import "github.com/rs/zerolog/log"
+
+func main() {
+    bi, _ := debug.ReadBuildInfo()
+    log.Info().Str("go_version", bi.GoVersion).Msg("Started")
+}
+```
+
+### Bad Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Info().Msg("Started") // Bad: No metadata
+}
+```
+
+## Rule 4: Log Level Configuration
+Description: Set log level via LOG_LEVEL env variable, defaulting to INFO.
+
+### Good Example:
+```go
+package main
+import "os"
+import "strconv"
+import "github.com/rs/zerolog"
+
+func main() {
+    level, _ := strconv.Atoi(os.Getenv("LOG_LEVEL"))
+    if level < 0 || level > 5 { level = 1 } // Default to INFO
+    zerolog.SetGlobalLevel(zerolog.Level(level))
+    log.Info().Msg("Started")
+}
+```
+
+### Bad Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Debug().Msg("Debug") // Bad: No level control
+}
+```
+
+## Rule 5: Use Structured Logging with Context
+Description: Include fields like request ID, user agent, etc., for rich logs.
+
+### Good Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Info().
+        Str("request_id", "abc123").
+        Str("user_agent", "Mozilla/5.0").
+        Msg("Request processed")
+}
+```
+
+### Bad Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Info().Msg("Request processed") // Bad: No context
+}
+```
+
+## Rule 6: Implement Correlation IDs
+Description: Use github.com/rs/xid for tracing requests across logs.
+
+### Good Example:
+```go
+package main
+import "github.com/rs/xid"
+import "github.com/rs/zerolog/log"
+
+func main() {
+    id := xid.New().String()
+    log.Info().Str("correlation_id", id).Msg("Request started")
+}
+```
+
+### Bad Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Info().Msg("Request started") // Bad: No correlation ID
+}
+```
+
+## Rule 7: Use Zerolog Helpers
+Description: Leverage hlog for HTTP logging (e.g., AccessHandler).
+
+### Good Example:
+```go
+package main
+import "github.com/rs/zerolog/hlog"
+import "net/http"
+
+func main() {
+    h := hlog.AccessHandler(func(r *http.Request, status, size int, duration time.Duration) {
+        hlog.FromRequest(r).Info().Int("status", status).Msg("Request")
+    })
+    http.Handle("/", h(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})))
+}
+```
+
+### Bad Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+import "net/http"
+
+func main() {
+    http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+        log.Info().Msg("Request") // Bad: Manual, no helper
+    })
+}
+```
+
+## Rule 8: Always Use Msg or Msgf
+Description: Chain with Msg or Msgf to ensure logs are written.
+
+### Good Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Info().Str("key", "value").Msg("Event")
+}
+```
+
+### Bad Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Info().Str("key", "value") // Bad: No Msg, log not written
+}
+```
+
+## Rule 9: Set Global Log Level
+Description: Use zerolog.SetGlobalLevel for filtering.
+
+### Good Example:
+```go
+package main
+import "github.com/rs/zerolog"
+
+func main() {
+    zerolog.SetGlobalLevel(zerolog.InfoLevel)
+    log.Debug().Msg("Not logged")
+    log.Info().Msg("Logged")
+}
+```
+
+### Bad Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Debug().Msg("Logged") // Bad: No filtering
+}
+```
+
+## Rule 10: Use Sub-Loggers for Scoped Logging
+Description: Use With().Logger() for concurrency-safe scoping.
+
+### Good Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    subLogger := log.With().Str("module", "auth").Logger()
+    subLogger.Info().Msg("Login")
+}
+```
+
+### Bad Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Info().Str("module", "auth").Msg("Login") // Bad: No scoping
+}
+```
+
+## Rule 11: Avoid Field Duplication
+Description: Don’t reuse keys, as Zerolog doesn’t de-duplicate.
+
+### Good Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Info().Str("time_taken", "5ms").Msg("Done")
+}
+```
+
+### Bad Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Info().Str("time", "5ms").Str("time", "10ms").Msg("Done") // Bad: Duplicated key
+}
+```
+
+## Rule 12: Capture Line Numbers for Errors
+Description: Use runtime.Caller for precise debugging.
+
+### Good Example:
+```go
+package main
+import "runtime"
+import "github.com/rs/zerolog/log"
+
+func main() {
+    _, file, line, _ := runtime.Caller(1)
+    log.Error().Str("file", file).Int("line", line).Msg("Failed")
+}
+```
+
+### Bad Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Error().Msg("Failed") // Bad: No location
+}
+```
+
+## Rule 13: Redirect Critical Logs
+Description: Send critical logs to dedicated files.
+
+### Good Example:
+```go
+package main
+import "os"
+import "github.com/rs/zerolog"
+
+func main() {
+    criticalFile, _ := os.OpenFile("critical.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    log.Logger = zerolog.New(zerolog.MultiLevelWriter(os.Stdout, criticalFile)).With().Timestamp().Logger()
+    log.Error().Msg("Critical error")
+}
+```
+
+### Bad Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Error().Msg("Critical error") // Bad: No redirection
+}
+```
+
+## Rule 14: Use Context-Rich Logs
+Description: Enrich errors with stack traces using Stack().
+
+### Good Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Error().Err(fmt.Errorf("db error")).Stack().Msg("Query failed")
+}
+```
+
+### Bad Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func main() {
+    log.Error().Msg("Query failed") // Bad: No stack trace
+}
+```
+
+## Rule 15: Add Appropriate Logs Only
+Description: Log meaningful events (e.g., state changes, errors) and avoid noise (e.g., loop iterations).
+
+### Good Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func processOrder(id string) {
+    log.Info().Str("order_id", id).Msg("Order processing started")
+    if err := saveOrder(id); err != nil {
+        log.Error().Err(err).Str("order_id", id).Msg("Order save failed")
+    }
+}
+```
+
+### Bad Example:
+```go
+package main
+import "github.com/rs/zerolog/log"
+
+func processOrder(id string) {
+    for i := 0; i < 100; i++ {
+        log.Debug().Int("iteration", i).Msg("Processing") // Bad: Noisy, low-value logs
+    }
+}
+```

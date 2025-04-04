@@ -1,0 +1,278 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+## Rule 1: Use Explicit Return Types
+Why It Matters: Explicit annotations (:one, :many, :exec) tell sqlc how many rows to expect, ensuring generated Go code matches query intent and avoids runtime errors.
+### Good Example:
+```sql
+-- name: GetUser :one
+SELECT * FROM users WHERE id = ? LIMIT 1;
+```
+- Generates a method returning a single struct.
+
+### Bad Example:
+```sql
+-- name: GetUser
+SELECT * FROM users WHERE id = ?;
+```
+- Lacks clarity, causing sqlc to infer incorrectly, potentially leading to runtime panics.
+
+## Rule 2: Add LIMIT 1 to Single-Result Queries
+Why It Matters: Ensures :one queries return exactly one row, preventing unexpected multiple-row errors in SQLite, which lacks strict row enforcement.
+
+### Good Example:
+```sql
+-- name: GetUserByEmail :one
+SELECT * FROM users WHERE email = ? LIMIT 1;
+```
+
+### Bad Example:
+```sql
+-- name: GetUserByEmail :one
+SELECT * FROM users WHERE email = ?;
+```
+- If multiple rows match, sqlc panics at runtime.
+
+## Rule 3: Use Explicit Column Names
+Why It Matters: Listing columns prevents breakage when the schema changes (e.g., adding a column), ensuring generated structs remain stable.
+
+### Good Example:
+```sql
+-- name: ListUsers :many
+SELECT id, name, email, created_at FROM users ORDER BY created_at DESC;
+```
+
+### Bad Example:
+```sql
+-- name: ListUsers :many
+SELECT * FROM users ORDER BY created_at DESC;
+```
+- A new column in users breaks the generated struct, causing runtime errors.
+
+## Rule 4: Set Proper Primary Keys
+Why It Matters: SQLite requires explicit PRIMARY KEY definitions for reliable row identification and performance, unlike some databases that infer them.
+### Good Example:
+```sql
+CREATE TABLE users (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL
+);
+```
+
+### Bad Example:
+```sql
+CREATE TABLE users (
+  id INTEGER,
+  name TEXT NOT NULL
+);
+```
+- Without a PRIMARY KEY, SQLite may not enforce uniqueness, leading to data issues.
+
+## Rule 5: Use Named Parameters for Clarity
+
+Why It Matters: sqlc.arg() improves readability and avoids confusion when queries reuse parameters or have unclear defaults like arg1, arg2.
+
+### Good Example:
+```sql
+-- name: UpdateUserName :exec
+UPDATE users
+SET name = sqlc.arg(new_name)
+WHERE id = sqlc.arg(user_id);
+```
+
+### Bad Example:
+```sql
+-- name: UpdateUserName :exec
+UPDATE users
+SET name = ?
+WHERE id = ?;
+```
+- Unclear parameter mapping makes debugging harder.
+
+## Rule 6: Handle Nullable Fields Properly
+Why It Matters: SQLite’s dynamic typing means NULLs are common; sqlc.narg() or pointers ensure safe handling of optional parameters.
+
+### Good Example:
+```sql
+-- name: UpdateUserBio :exec
+UPDATE users
+SET bio = sqlc.narg(bio)
+WHERE id = ?;
+```
+- Generated code uses *string for bio.
+
+### Bad Example:
+```sql
+-- name: UpdateUserBio :exec
+UPDATE users
+SET bio = ?
+WHERE id = ?;
+```
+- Without narg, a NULL value may cause type mismatches in Go.
+
+## Rule 7: Leverage RETURNING Clauses (SQLite 3.35.0+)
+Why It Matters: RETURNING (available since SQLite 3.35.0) retrieves modified rows directly, reducing follow-up queries. Check your SQLite version!
+### Good Example:
+```sql
+-- name: CreateUser :one
+INSERT INTO users (name, email)
+VALUES (?, ?)
+RETURNING id, name, email;
+```
+
+### Bad Example:
+```sql
+-- name: CreateUser :exec
+INSERT INTO users (name, email)
+VALUES (?, ?);
+```
+- Requires a separate SELECT to get the new row, increasing complexity.
+- Caveat: For older SQLite versions (<3.35.0), use sqlite3_last_insert_rowid() or a follow-up query.
+
+## Rule 8: Keep Queries in Separate Files
+Why It Matters: Organizing queries by entity (e.g., users, posts) improves maintainability and reduces merge conflicts in teams.
+
+### Good Example:
+```text
+query/
+  user_queries.sql
+  post_queries.sql
+```
+
+### Bad Example:
+```text
+query.sql  -- All queries in one file
+```
+- A single file becomes unwieldy as the project grows.
+
+## Rule 9: Use Transaction Support
+Why It Matters: SQLite supports transactions natively; sqlc’s WithTx ensures atomic operations, critical for data consistency.
+### Good Example:
+```go
+tx, err := db.Begin()
+if err != nil {
+    return err
+}
+defer tx.Rollback()
+qtx := queries.WithTx(tx)
+if err := qtx.DeleteUser(ctx, id); err != nil {
+    return err
+}
+if err := tx.Commit(); err != nil {
+    return err
+}
+```
+
+### Bad Example:
+```go
+queries.DeleteUser(ctx, id)
+queries.DeleteUserPosts(ctx, id)
+```
+- Non-atomic operations risk partial updates if one fails.
+
+## Rule 10: Configure Appropriate Type Mappings
+Why It Matters: SQLite’s loose typing requires explicit Go type overrides in sqlc.yaml for consistency (e.g., mapping timestamp to time.Time).
+
+### Good Example:
+```yaml
+version: "2"
+sql:
+  - engine: "sqlite"
+    schema: "schema.sql"
+    queries: "query.sql"
+    gen:
+      go:
+        package: "db"
+        out: "db"
+        overrides:
+          - db_type: "timestamp"
+            go_type: "time.Time"
+```
+
+### Bad Example:
+```yaml
+# No overrides, relying on defaults
+```
+- Forces manual type conversions in Go, increasing error risk.
+## Rule 11: Include Proper Database Connection Management
+Why It Matters: SQLite benefits from options like _foreign_keys=on and _journal_mode=WAL for integrity and performance; proper closure prevents resource leaks.
+
+### Good Example:
+```go
+db, err := sql.Open("sqlite", "app.db?_foreign_keys=on&_journal_mode=WAL")
+if err != nil {
+    return err
+}
+defer db.Close()
+```
+
+### Bad Example:
+```go
+db, err := sql.Open("sqlite", "app.db")
+// No configuration or closure
+```
+- Misses optimizations and risks file handle leaks.
+
+## Rule 12: Add Comments to Complex Queries
+Why It Matters: Comments clarify intent in complex queries, aiding future maintenance, especially for SQLite’s simpler SQL dialect.
+
+### Good Example:
+```sql
+-- name: GetActiveUserStats :many
+-- Retrieves stats for users active in the last 30 days with complete profiles
+SELECT u.id, COUNT(p.id) as post_count
+FROM users u
+LEFT JOIN posts p ON p.user_id = u.id
+WHERE u.last_active_at > datetime('now', '-30 days')
+  AND u.profile_completed = 1
+GROUP BY u.id;
+```
+
+### Bad Example:
+```sql
+-- name: GetUserStats :many
+SELECT u.id, COUNT(p.id) as post_count
+FROM users u LEFT JOIN posts p ON p.user_id = u.id
+WHERE u.last_active_at > datetime('now', '-30 days') AND u.profile_completed = 1
+GROUP BY u.id;
+```
+- Unclear purpose complicates debugging.
+
+## Additional Rule 13: Use Migrations as the Source of Truth
+Why It Matters: SQLite lacks a built-in migration system; using tools like goose ensures schema consistency with sqlc’s generated code.
+
+### Good Example:
+```yaml
+version: "2"
+sql:
+  - schema: "./db/migration/"
+    queries: "./db/query/"
+    engine: "sqlite"
+```
+Run migrations, then sqlc generate.
+
+### Bad Example:
+```sql
+-- schema.sql (manually edited)
+ALTER TABLE users ADD COLUMN email TEXT;
+```
+- Manual edits risk schema drift.
+
+## Additional Rule 14: Optimize Queries with Indexing
+Why It Matters: SQLite performance depends heavily on indexes, especially for large datasets; analyze with EXPLAIN QUERY PLAN.
+
+### Good Example:
+```sql
+CREATE INDEX idx_users_email ON users(email);
+-- name: GetUserByEmail :one
+SELECT * FROM users WHERE email = ? LIMIT 1;
+```
+
+### Bad Example:
+```sql
+-- name: GetUserByEmail :one
+SELECT * FROM users WHERE email = ? LIMIT 1;
+No index leads to slow full-table scans.
+```

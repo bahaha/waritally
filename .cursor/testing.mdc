@@ -1,0 +1,683 @@
+---
+description: 
+globs: *_test.go
+alwaysApply: false
+---
+# Waritally Testing Strategy
+
+## Testing Philosophy
+
+At Waritally, we believe in a pragmatic approach to testing that emphasizes:
+
+1. **Behavior over Implementation**: Testing should verify that the software does what it's supposed to do, not how it does it.
+
+2. **Real Dependencies When Practical**: Minimize mocks and prefer real implementations with test databases when possible.
+
+3. **Confidence in Refactoring**: Tests should give us confidence to refactor code without breaking functionality.
+
+4. **Speed and Simplicity**: Testing should be fast enough to run frequently and simple enough to maintain.
+
+5. **Focus on Critical Paths**: Prioritize testing business-critical paths and edge cases over exhaustive coverage.
+
+## Testing Approach
+
+### 1. Integration Testing with SQLite
+
+Instead of extensive mocking, we'll use SQLite's in-memory database capabilities for integration testing. This approach has several advantages:
+
+- **Speed**: In-memory SQLite is fast enough for tests
+- **Real Behavior**: Tests interact with a real database
+- **No Cleanup**: In-memory databases disappear after tests
+- **Portable**: No external dependencies required
+- **Consistent API**: Same API as production code
+
+#### Implementation Approach
+
+```go
+// test_helper.go
+func SetupTestDB() (*sql.DB, func()) {
+    // Create an in-memory database
+    db, err := sql.Open("sqlite3", ":memory:")
+    if err != nil {
+        panic(fmt.Sprintf("Failed to open in-memory database: %v", err))
+    }
+
+    // Run all migrations
+    err = RunMigrations(db)
+    if err != nil {
+        panic(fmt.Sprintf("Failed to run migrations: %v", err))
+    }
+
+    // Return the database and a cleanup function
+    return db, func() {
+        db.Close()
+    }
+}
+
+// Load predefined scenarios
+func LoadScenario(db *sql.DB, scenario string) error {
+    scenarioSQL, err := os.ReadFile(fmt.Sprintf("testdata/scenarios/%s.sql", scenario))
+    if err != nil {
+        return fmt.Errorf("failed to read scenario file: %w", err)
+    }
+    
+    _, err = db.Exec(string(scenarioSQL))
+    return err
+}
+```
+
+### 2. Scenario-Based Testing
+
+We'll create SQL scripts that set up specific scenarios for testing, stored in the `testdata/scenarios` directory:
+
+```
+testdata/
+└── scenarios/
+    ├── empty.sql                    # Fresh database with just schema
+    ├── single_activity.sql          # One activity with one user
+    ├── multi_user_activity.sql      # One activity with multiple users
+    ├── complex_expenses.sql         # Activity with various expense types
+    ├── multiple_currencies.sql      # Expenses in different currencies
+    └── complex_settlement.sql       # Complex settlement scenario
+```
+
+Example scenario script:
+
+```sql
+-- testdata/scenarios/multi_user_activity.sql
+
+-- Create users
+INSERT INTO users (public_id, name, device_id, preferred_currency) VALUES
+('user1', 'Alice', 'device1', 'USD'),
+('user2', 'Bob', 'device2', 'USD'),
+('user3', 'Charlie', 'device3', 'EUR');
+
+-- Create activity
+INSERT INTO activities (public_id, name, description, primary_currency, creator_id, access_token, admin_token) VALUES
+('activity1', 'Weekend Trip', 'Short weekend getaway', 'USD', 'user1', 'access123', 'admin123');
+
+-- Add members to activity
+INSERT INTO activity_members (activity_id, user_id, role) VALUES
+('activity1', 'user1', 'creator'),
+('activity1', 'user2', 'contributor'),
+('activity1', 'user3', 'contributor');
+
+-- Add some basic expenses
+INSERT INTO expenses (public_id, activity_id, payer_id, amount, original_currency, description, expense_date) VALUES
+('expense1', 'activity1', 'user1', 100.00, 'USD', 'Dinner', '2023-01-01 19:00:00'),
+('expense2', 'activity1', 'user2', 75.00, 'USD', 'Drinks', '2023-01-01 21:00:00'),
+('expense3', 'activity1', 'user3', 120.00, 'EUR', 'Hotel', '2023-01-02 10:00:00');
+
+-- Set up expense participants
+INSERT INTO expense_participants (expense_id, user_id, share_amount, share_percentage) VALUES
+-- Dinner split equally
+('expense1', 'user1', 33.33, 33.33),
+('expense1', 'user2', 33.33, 33.33),
+('expense1', 'user3', 33.34, 33.34),
+-- Drinks split between Alice and Bob only
+('expense2', 'user1', 37.50, 50.00),
+('expense2', 'user2', 37.50, 50.00),
+-- Hotel paid by Charlie but split equally
+('expense3', 'user1', 40.00, 33.33),
+('expense3', 'user2', 40.00, 33.33),
+('expense3', 'user3', 40.00, 33.34);
+```
+
+### 3. Service-Level Testing
+
+Test services with real repositories and a test database:
+
+```go
+func TestExpenseService_AddExpense(t *testing.T) {
+    // Set up test database
+    db, cleanup := SetupTestDB()
+    defer cleanup()
+    
+    // Load scenario
+    err := LoadScenario(db, "single_activity")
+    if err != nil {
+        t.Fatalf("Failed to load scenario: %v", err)
+    }
+    
+    // Create real repositories
+    userRepo := sqlite.NewUserRepository(db)
+    activityRepo := sqlite.NewActivityRepository(db)
+    expenseRepo := sqlite.NewExpenseRepository(db)
+    
+    // Create a simple currency converter for testing
+    currencyConverter := &simpleCurrency{
+        rates: map[string]float64{
+            "EUR_USD": 1.1,
+            "USD_EUR": 0.9,
+        },
+    }
+    
+    // Create the service with real dependencies
+    service := expense.NewExpenseService(expenseRepo, activityRepo, userRepo, currencyConverter)
+    
+    // Run the test
+    ctx := context.Background()
+    input := expense.ExpenseInput{
+        PayerID:     "user1",
+        Amount:      50.0,
+        Currency:    "USD",
+        Description: "Test expense",
+        Date:        time.Now(),
+    }
+    
+    exp, err := service.AddExpense(ctx, "activity1", input)
+    if err != nil {
+        t.Fatalf("Failed to add expense: %v", err)
+    }
+    
+    // Verify the expense was created correctly
+    if exp.Amount != 50.0 {
+        t.Errorf("Expected amount 50.0, got %v", exp.Amount)
+    }
+    
+    // Verify it was actually stored in the database
+    savedExp, err := expenseRepo.FindByID(ctx, exp.PublicID)
+    if err != nil {
+        t.Fatalf("Failed to retrieve saved expense: %v", err)
+    }
+    
+    if savedExp.Description != "Test expense" {
+        t.Errorf("Expected description 'Test expense', got '%v'", savedExp.Description)
+    }
+}
+```
+
+### 4. HTTP Handler Testing
+
+Test HTTP handlers with real services and a test database:
+
+```go
+func TestExpenseHandlers_AddExpense(t *testing.T) {
+    // Set up test database
+    db, cleanup := SetupTestDB()
+    defer cleanup()
+    
+    // Load scenario
+    err := LoadScenario(db, "single_activity")
+    if err != nil {
+        t.Fatalf("Failed to load scenario: %v", err)
+    }
+    
+    // Create repositories and services
+    repos := createRepositories(db)
+    services := createServices(repos)
+    
+    // Create a simple identity provider that always returns a specific user
+    identityProvider := &testIdentityProvider{userID: "user1"}
+    
+    // Create the handler
+    handler := handlers.NewExpenseHandler(services.Expense, services.Activity, identityProvider, templates.NewTemplateRenderer())
+    
+    // Create a test server
+    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        // Set context with user ID to simulate auth middleware
+        ctx := context.WithValue(r.Context(), auth.UserIDKey, "user1")
+        handler.HandleAddExpense(w, r.WithContext(ctx))
+    }))
+    defer server.Close()
+    
+    // Create form data
+    form := url.Values{}
+    form.Set("amount", "42.50")
+    form.Set("currency", "USD")
+    form.Set("description", "Test expense")
+    form.Set("date", time.Now().Format("2006-01-02"))
+    form.Set("category_id", "1")
+    form.Set("split_method", "equal")
+    form.Add("participants", "user1")
+    form.Add("participants", "user2")
+    
+    // Send request
+    resp, err := http.PostForm(server.URL+"/activities/activity1/expenses", form)
+    if err != nil {
+        t.Fatalf("Failed to send request: %v", err)
+    }
+    defer resp.Body.Close()
+    
+    // Check response
+    if resp.StatusCode != http.StatusOK {
+        t.Errorf("Expected status OK, got %v", resp.StatusCode)
+    }
+    
+    // Verify the expense was created in the database
+    expenses, err := repos.Expense.FindForActivity(context.Background(), "activity1")
+    if err != nil {
+        t.Fatalf("Failed to retrieve expenses: %v", err)
+    }
+    
+    var found bool
+    for _, exp := range expenses {
+        if exp.Description == "Test expense" && exp.Amount == 42.50 {
+            found = true
+            break
+        }
+    }
+    
+    if !found {
+        t.Error("Failed to find the created expense in the database")
+    }
+}
+```
+
+### 5. Unit Testing for Core Algorithms
+
+Use unit tests with minimal dependencies for core algorithms:
+
+```go
+func TestSettlementOptimizer_CalculateMinimumTransactions(t *testing.T) {
+    // Define test cases
+    testCases := []struct {
+        name          string
+        balances      map[string]float64
+        expectedTxCount int
+    }{
+        {
+            name: "Simple case",
+            balances: map[string]float64{
+                "user1": 100.0,   // Owes 100
+                "user2": -50.0,   // Is owed 50
+                "user3": -50.0,   // Is owed 50
+            },
+            expectedTxCount: 1,
+        },
+        {
+            name: "Complex case",
+            balances: map[string]float64{
+                "user1": 100.0,   // Owes 100
+                "user2": 50.0,    // Owes 50
+                "user3": -75.0,   // Is owed 75
+                "user4": -25.0,   // Is owed 25
+                "user5": -50.0,   // Is owed 50
+            },
+            expectedTxCount: 3,
+        },
+        // Add more test cases here
+    }
+    
+    for _, tc := range testCases {
+        t.Run(tc.name, func(t *testing.T) {
+            // Create the optimizer
+            optimizer := settlement.NewOptimizer()
+            
+            // Run the algorithm
+            transactions := optimizer.CalculateMinimumTransactions(tc.balances)
+            
+            // Verify transaction count
+            if len(transactions) != tc.expectedTxCount {
+                t.Errorf("Expected %d transactions, got %d", tc.expectedTxCount, len(transactions))
+            }
+            
+            // Verify that transactions resolve all balances
+            newBalances := make(map[string]float64)
+            for user, balance := range tc.balances {
+                newBalances[user] = balance
+            }
+            
+            for _, tx := range transactions {
+                newBalances[tx.FromUser] -= tx.Amount
+                newBalances[tx.ToUser] += tx.Amount
+            }
+            
+            // Check that all balances are now close to zero
+            for user, balance := range newBalances {
+                if math.Abs(balance) > 0.01 {
+                    t.Errorf("User %s still has non-zero balance: %f", user, balance)
+                }
+            }
+        })
+    }
+}
+```
+
+### 6. End-to-End Testing with SQLite
+
+Create end-to-end tests that simulate user flows through the API:
+
+```go
+func TestCompleteExpenseFlow(t *testing.T) {
+    // Set up test database
+    db, cleanup := SetupTestDB()
+    defer cleanup()
+    
+    // Load scenario
+    err := LoadScenario(db, "empty")
+    if err != nil {
+        t.Fatalf("Failed to load scenario: %v", err)
+    }
+    
+    // Create repositories, services, and handlers
+    repos := createRepositories(db)
+    services := createServices(repos)
+    handlers := createHandlers(services)
+    
+    // Create a router
+    router := mux.NewRouter()
+    setupRoutes(router, handlers)
+    
+    // Create a test server
+    server := httptest.NewServer(router)
+    defer server.Close()
+    
+    // Create a client with cookies
+    client := &http.Client{
+        Jar: cookiejar.New(nil),
+    }
+    
+    // Step 1: Create anonymous user
+    userData := url.Values{}
+    userData.Set("name", "Test User")
+    
+    resp, err := client.PostForm(server.URL+"/set-user", userData)
+    if err != nil || resp.StatusCode != http.StatusOK {
+        t.Fatalf("Failed to create user: %v, status: %v", err, resp.StatusCode)
+    }
+    
+    // Step 2: Create an activity
+    activityData := url.Values{}
+    activityData.Set("name", "Test Activity")
+    activityData.Set("description", "For testing")
+    activityData.Set("currency", "USD")
+    
+    resp, err = client.PostForm(server.URL+"/activities", activityData)
+    if err != nil || resp.StatusCode != http.StatusOK {
+        t.Fatalf("Failed to create activity: %v, status: %v", err, resp.StatusCode)
+    }
+    
+    // Extract activity ID from response
+    body, _ := io.ReadAll(resp.Body)
+    resp.Body.Close()
+    
+    activityIDRegex := regexp.MustCompile(`data-activity-id="([^"]+)"`)
+    matches := activityIDRegex.FindStringSubmatch(string(body))
+    if len(matches) < 2 {
+        t.Fatalf("Failed to extract activity ID from response")
+    }
+    activityID := matches[1]
+    
+    // Step 3: Add an expense
+    expenseData := url.Values{}
+    expenseData.Set("amount", "42.50")
+    expenseData.Set("currency", "USD")
+    expenseData.Set("description", "Test expense")
+    expenseData.Set("date", time.Now().Format("2006-01-02"))
+    expenseData.Set("split_method", "equal")
+    
+    resp, err = client.PostForm(server.URL+"/activities/"+activityID+"/expenses", expenseData)
+    if err != nil || resp.StatusCode != http.StatusOK {
+        t.Fatalf("Failed to add expense: %v, status: %v", err, resp.StatusCode)
+    }
+    
+    // Step 4: Verify the expense in the database
+    expenses, err := repos.Expense.FindForActivity(context.Background(), activityID)
+    if err != nil {
+        t.Fatalf("Failed to retrieve expenses: %v", err)
+    }
+    
+    if len(expenses) != 1 {
+        t.Fatalf("Expected 1 expense, got %d", len(expenses))
+    }
+    
+    if expenses[0].Description != "Test expense" || expenses[0].Amount != 42.50 {
+        t.Errorf("Expense details don't match: got %+v", expenses[0])
+    }
+}
+```
+
+## Test Suite Organization
+
+```
+waritally/
+├── internal/
+│   └── ...
+├── migrations/
+│   └── ...
+├── testdata/
+│   ├── scenarios/              # SQL files for test scenarios
+│   └── fixtures/               # Other test fixtures
+└── tests/
+    ├── unit/                   # Unit tests
+    │   ├── expense/
+    │   ├── settlement/
+    │   └── ...
+    ├── integration/            # Integration tests
+    │   ├── repository/
+    │   ├── service/
+    │   └── ...
+    ├── e2e/                    # End-to-end tests
+    │   ├── flows/
+    │   └── api/
+    └── helpers/                # Test helpers
+        ├── test_db.go
+        ├── test_server.go
+        └── ...
+```
+
+## Test Data Management
+
+### 1. Predefined Scenarios
+
+Create SQL files for different testing scenarios as described above.
+
+### 2. Test Data Factory
+
+Create helper functions to generate test data programmatically:
+
+```go
+// test_factory.go
+func CreateTestUser(db *sql.DB, name string) (*domain.User, error) {
+    publicID := fmt.Sprintf("test-user-%s-%d", name, time.Now().UnixNano())
+    user := &domain.User{
+        PublicID: publicID,
+        Name:     name,
+        DeviceID: fmt.Sprintf("device-%s", publicID),
+    }
+    
+    _, err := db.Exec(
+        "INSERT INTO users (public_id, name, device_id) VALUES (?, ?, ?)",
+        user.PublicID, user.Name, user.DeviceID,
+    )
+    
+    return user, err
+}
+
+func CreateTestActivity(db *sql.DB, name string, creatorID string) (*domain.Activity, error) {
+    publicID := fmt.Sprintf("test-activity-%d", time.Now().UnixNano())
+    accessToken := fmt.Sprintf("access-%s", publicID)
+    adminToken := fmt.Sprintf("admin-%s", publicID)
+    
+    activity := &domain.Activity{
+        PublicID:        publicID,
+        Name:            name,
+        Description:     "Test activity",
+        PrimaryCurrency: "USD",
+        CreatorID:       creatorID,
+        AccessToken:     accessToken,
+        AdminToken:      adminToken,
+    }
+    
+    _, err := db.Exec(
+        "INSERT INTO activities (public_id, name, description, primary_currency, creator_id, access_token, admin_token) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        activity.PublicID, activity.Name, activity.Description, activity.PrimaryCurrency, 
+        activity.CreatorID, activity.AccessToken, activity.AdminToken,
+    )
+    
+    if err != nil {
+        return nil, err
+    }
+    
+    // Add creator as member
+    _, err = db.Exec(
+        "INSERT INTO activity_members (activity_id, user_id, role) VALUES (?, ?, ?)",
+        activity.PublicID, creatorID, "creator",
+    )
+    
+    return activity, err
+}
+```
+
+## Continuous Integration
+
+Set up GitHub Actions or similar CI system to run tests automatically:
+
+```yaml
+# .github/workflows/test.yml
+name: Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.19
+    
+    - name: Install dependencies
+      run: go mod download
+    
+    - name: Run unit tests
+      run: go test -v ./internal/...
+    
+    - name: Run integration tests
+      run: go test -v ./tests/integration/...
+    
+    - name: Run end-to-end tests
+      run: go test -v ./tests/e2e/...
+    
+    - name: Check test coverage
+      run: go test -coverprofile=coverage.out -covermode=atomic ./...
+    
+    - name: Upload coverage report
+      uses: codecov/codecov-action@v2
+      with:
+        file: ./coverage.out
+        fail_ci_if_error: false
+```
+
+## Testing Best Practices
+
+1. **Test Naming Convention**: Use descriptive names with a clear pattern:
+   ```go
+   func TestExpenseService_AddExpense_WithValidInput_ShouldCreateExpense(t *testing.T) {}
+   func TestExpenseService_AddExpense_WithInvalidCurrency_ShouldReturnError(t *testing.T) {}
+   ```
+
+2. **Table-Driven Tests**: Use table-driven tests for testing multiple scenarios:
+   ```go
+   testCases := []struct {
+       name           string
+       input          ExpenseInput
+       expectedError  bool
+       errorMessage   string
+   }{
+       {
+           name: "Valid expense",
+           input: ExpenseInput{Amount: 50.0, Currency: "USD"},
+           expectedError: false,
+       },
+       {
+           name: "Negative amount",
+           input: ExpenseInput{Amount: -10.0, Currency: "USD"},
+           expectedError: true,
+           errorMessage: "amount must be positive",
+       },
+       // More test cases...
+   }
+   
+   for _, tc := range testCases {
+       t.Run(tc.name, func(t *testing.T) {
+           // Test code...
+       })
+   }
+   ```
+
+3. **Parallel Testing**: Run tests in parallel when possible:
+   ```go
+   func TestSomething(t *testing.T) {
+       t.Parallel()
+       // Test code...
+   }
+   ```
+
+4. **Database Transaction Rollback**: Use transactions for isolation in integration tests:
+   ```go
+   func TestWithTransaction(t *testing.T) {
+       db, cleanup := SetupTestDB()
+       defer cleanup()
+       
+       tx, err := db.Begin()
+       if err != nil {
+           t.Fatalf("Failed to begin transaction: %v", err)
+       }
+       defer tx.Rollback()
+       
+       // Use tx for all database operations
+       
+       // No need to commit, rollback will discard changes
+   }
+   ```
+
+5. **Assertion Helpers**: Create helpers for common assertions:
+   ```go
+   func assertStatusCode(t *testing.T, expected int, actual int) {
+       t.Helper()
+       if expected != actual {
+           t.Errorf("Expected status code %d, got %d", expected, actual)
+       }
+   }
+   ```
+
+## Test Database Setup
+
+For some environments, you might want to use a real SQLite file instead of in-memory for debugging:
+
+```go
+func SetupTestDBFile() (*sql.DB, func()) {
+    // Create a temporary file
+    file, err := os.CreateTemp("", "waritally-test-*.db")
+    if err != nil {
+        panic(fmt.Sprintf("Failed to create temp file: %v", err))
+    }
+    fileName := file.Name()
+    file.Close()
+    
+    // Open the database
+    db, err := sql.Open("sqlite3", fileName)
+    if err != nil {
+        panic(fmt.Sprintf("Failed to open database: %v", err))
+    }
+    
+    // Run migrations
+    err = RunMigrations(db)
+    if err != nil {
+        db.Close()
+        os.Remove(fileName)
+        panic(fmt.Sprintf("Failed to run migrations: %v", err))
+    }
+    
+    // Return cleanup function
+    return db, func() {
+        db.Close()
+        os.Remove(fileName)
+    }
+}
+```
+
+## Conclusion
+
+This testing strategy minimizes the use of mocks in favor of real SQLite databases for testing. By using predefined scenarios and in-memory databases, we can test behavior realistically while maintaining speed and simplicity.
+
+The approach balances the need for unit testing core algorithms with integration testing for repositories and services, and end-to-end testing for complete flows. This provides confidence in refactoring while focusing on the actual behavior of the application rather than implementation details.
