@@ -1,0 +1,19 @@
+package layouts
+
+templ Base(title string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>{ title } - Waritally</title>
+			<link rel="stylesheet" href="/assets/css/global.css"/>
+			<meta name="description" content="Waritally - Your War Game Tally App"/>
+		</head>
+		<body class="bg-background text-text antialiased">
+			<main class="container mx-auto px-4 py-6">
+				{ children... }
+			</main>
+		</body>
+	</html>
+}

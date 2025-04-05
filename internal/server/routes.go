@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/cors"
 
 	"waritally/cmd/web"
-	// "waritally/internal/server/handlers"
+	"waritally/internal/views/pages"
 )
 
 // RegisterRoutes sets up all the routes for our application
@@ -27,20 +27,14 @@ func (s *Server) RegisterRoutes() http.Handler {
 		MaxAge:           300,
 	}))
 
-	// Static assets
 	fileServer := http.FileServer(http.FS(web.Files))
 	r.Handle("/assets/*", fileServer)
 
-	// Health check and root path
 	r.Get("/health", s.healthCheck)
-	r.Get("/", s.handleHome)
+	r.Get("/", s.handleHomePage)
 
-	// API routes - to be expanded later
 	r.Route("/api", func(r chi.Router) {
-		// In future, we'll add:
-		// r.Route("/users", s.userRoutes)
-		// r.Route("/activities", s.activityRoutes)
-		// r.Route("/expenses", s.expenseRoutes)
+		r.Get("/", s.handleHome)
 	})
 
 	return r
@@ -53,13 +47,23 @@ func (s *Server) healthCheck(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-// handleHome handles the root path
+// handleHome handles the root path of the API
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]string{"message": "Welcome to Waritally API"}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		s.logger.Error("api", err, "failed to encode response")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleHomePage renders the home page using templ
+func (s *Server) handleHomePage(w http.ResponseWriter, r *http.Request) {
+	component := pages.Home()
+	if err := component.Render(r.Context(), w); err != nil {
+		s.logger.Error("home-page", err, "failed to render home page")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}

@@ -1,7 +1,7 @@
 # Makefile for Waritally project
 
 # Go settings
-BINARY_NAME=waritally
+BINARY_NAME=main
 MAIN_PACKAGE=./cmd/api
 GOFLAGS=-ldflags="-s -w"
 
@@ -11,6 +11,7 @@ SQLC=$(GOPATH)/bin/sqlc
 GOOSE=$(GOPATH)/bin/goose
 TEMPL=$(GOPATH)/bin/templ
 AIR=$(GOPATH)/bin/air
+TAILWIND=./tailwindcss
 
 # Environment
 ENV_FILE=.env
@@ -42,12 +43,22 @@ tools:
 		echo "Installing sqlc..."; \
 		go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest; \
 	fi
+	@if [ ! -f $(TAILWIND) ]; then \
+		curl -sL https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-macos-arm64 -o $(TAILWIND); \
+		chmod +x $(TAILWIND); \
+	fi
 
 # Generate templ files
 .PHONY: templates
 templates: tools
 	@echo "Generating templates..."
 	@$(TEMPL) generate
+
+# Compile tailwindcss
+.PHONY: css
+css: tools
+	@echo "Compiling CSS with tailwindcss..."
+	@$(TAILWIND) -i internal/server/assets/css/input.css -o cmd/web/assets/css/global.css
 
 # Generate sqlc code
 .PHONY: sqlc
@@ -63,7 +74,7 @@ migrate: tools
 
 # Build the application
 .PHONY: build
-build: deps templates sqlc
+build: deps templates sqlc css
 	@echo "Building $(BINARY_NAME)..."
 	@go build $(GOFLAGS) -o $(BINARY_NAME) $(MAIN_PACKAGE)
 
@@ -75,9 +86,15 @@ run: build
 
 # Run with hot reload using air
 .PHONY: dev
-dev: tools templates sqlc
+dev: tools templates sqlc css
 	@echo "Running with hot reload..."
 	@$(AIR)
+
+# Build for air (without sqlc to prevent infinite loops)
+.PHONY: air-build
+air-build: deps templates css
+	@echo "Building $(BINARY_NAME) for air..."
+	@go build $(GOFLAGS) -o $(BINARY_NAME) $(MAIN_PACKAGE)
 
 # Run tests
 .PHONY: test
