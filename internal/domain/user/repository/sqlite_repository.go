@@ -26,11 +26,6 @@ func NewSQLiteRepository(db *sql.DB) *SQLiteRepository {
 
 // Create stores a new user in the database
 func (r *SQLiteRepository) Create(ctx context.Context, u *user.User) (*user.User, error) {
-	// Ensure we have a valid ULID
-	if u.PublicID == "" {
-		u.PublicID = id.NewString()
-	}
-
 	params := sqlc.CreateUserParams{
 		PublicID:          u.PublicID,
 		Name:              u.Name,
@@ -38,7 +33,6 @@ func (r *SQLiteRepository) Create(ctx context.Context, u *user.User) (*user.User
 		PreferredCurrency: u.PreferredCurrency,
 	}
 
-	// Use a transaction for atomicity
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -110,7 +104,10 @@ func (r *SQLiteRepository) List(ctx context.Context, limit, offset int) ([]*user
 }
 
 // UpdateName updates a user's name
-func (r *SQLiteRepository) UpdateName(ctx context.Context, publicID, name string) (*user.User, error) {
+func (r *SQLiteRepository) UpdateName(
+	ctx context.Context,
+	publicID, name string,
+) (*user.User, error) {
 	params := sqlc.UpdateUserNameParams{
 		PublicID: publicID,
 		Name:     name,
@@ -139,7 +136,10 @@ func (r *SQLiteRepository) UpdateName(ctx context.Context, publicID, name string
 }
 
 // UpdateCurrency updates a user's preferred currency
-func (r *SQLiteRepository) UpdateCurrency(ctx context.Context, publicID, currency string) (*user.User, error) {
+func (r *SQLiteRepository) UpdateCurrency(
+	ctx context.Context,
+	publicID, currency string,
+) (*user.User, error) {
 	params := sqlc.UpdateUserCurrencyParams{
 		PublicID: publicID,
 		Currency: currency,

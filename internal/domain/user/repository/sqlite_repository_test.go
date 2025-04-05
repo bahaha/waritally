@@ -14,11 +14,11 @@ func TestSQLiteRepository_CreateAndRetrieve(t *testing.T) {
 	repo := NewSQLiteRepository(db)
 
 	// Test creating a new user
-	newUser := user.NewUser(
-		user.NewUserBuilder().
-			WithName("TestUser").
-			WithDeviceID("test-device-id").
-			WithPreferredCurrency("USD"))
+	newUser := user.NewUserBuilder().
+		WithName("TestUser").
+		WithDeviceID("test-device-id").
+		WithPreferredCurrency("USD").
+		Build()
 
 	// Create the user
 	ctx := context.Background()
@@ -59,7 +59,11 @@ func TestSQLiteRepository_CreateAndRetrieve(t *testing.T) {
 	}
 
 	if retrievedByPublicID.DeviceID != "test-device-id" {
-		t.Errorf("Retrieved user got deviceID = %v, want %v", retrievedByPublicID.DeviceID, "test-device-id")
+		t.Errorf(
+			"Retrieved user got deviceID = %v, want %v",
+			retrievedByPublicID.DeviceID,
+			"test-device-id",
+		)
 	}
 }
 
@@ -69,11 +73,11 @@ func TestSQLiteRepository_UpdateUser(t *testing.T) {
 	ctx := context.Background()
 
 	// Create test user
-	testUser := user.NewUser(
-		user.NewUserBuilder().
-			WithName("Original").
-			WithDeviceID("device-update-test").
-			WithPreferredCurrency("USD"))
+	testUser := user.NewUserBuilder().
+		WithName("Original").
+		WithDeviceID("device-update-test").
+		WithPreferredCurrency("USD").
+		Build()
 	createdUser, err := repo.Create(ctx, testUser)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
@@ -96,7 +100,11 @@ func TestSQLiteRepository_UpdateUser(t *testing.T) {
 	}
 
 	if currencyUser.PreferredCurrency != "EUR" {
-		t.Errorf("UpdateCurrency() got currency = %v, want %v", currencyUser.PreferredCurrency, "EUR")
+		t.Errorf(
+			"UpdateCurrency() got currency = %v, want %v",
+			currencyUser.PreferredCurrency,
+			"EUR",
+		)
 	}
 
 	// Verify name is still updated
@@ -111,11 +119,11 @@ func TestSQLiteRepository_DeleteUser(t *testing.T) {
 	ctx := context.Background()
 
 	// Create test user
-	testUser := user.NewUser(
-		user.NewUserBuilder().
-			WithName("ToDelete").
-			WithDeviceID("device-delete-test").
-			WithPreferredCurrency("USD"))
+	testUser := user.NewUserBuilder().
+		WithName("ToDelete").
+		WithDeviceID("device-delete-test").
+		WithPreferredCurrency("USD").
+		Build()
 	createdUser, err := repo.Create(ctx, testUser)
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)

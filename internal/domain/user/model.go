@@ -59,18 +59,6 @@ func (b *UserBuilder) Build() *User {
 	}
 }
 
-// NewUser creates a new user with a generated ULID
-func NewUser(userBuilder *UserBuilder) *User {
-	// Use secure monotonic ULID generation for users
-	return &User{
-		PublicID:          id.NewMonotonicString(),
-		Name:              userBuilder.name,
-		DeviceID:          userBuilder.deviceID,
-		PreferredCurrency: userBuilder.preferredCurrency,
-		CreatedAt:         userBuilder.createdAt,
-	}
-}
-
 // GetPublicID returns the user's public ID as a ULID
 func (u *User) GetPublicID() (ulid.ULID, error) {
 	return id.Parse(u.PublicID)
