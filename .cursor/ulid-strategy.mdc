@@ -1,0 +1,253 @@
+---
+description: ULID implementation strategy
+globs: *.go
+alwaysApply: false
+---
+# ULID Strategy for Database Primary Keys
+
+## Rule 1: Generate ULIDs with Secure Entropy
+Description: Use crypto/rand for ULID generation to prevent collisions and ensure security in distributed systems.
+
+### Good Example:
+```go
+package id
+
+import (
+    "crypto/rand"
+    "github.com/oklog/ulid/v2"
+    "io"
+)
+
+var entropy io.Reader = rand.Reader
+
+// New generates a new ULID with secure entropy source
+func New() ulid.ULID {
+    return ulid.MustNew(ulid.Timestamp(time.Now()), entropy)
+}
+```
+
+### Bad Example:
+```go
+package id
+
+import "github.com/oklog/ulid/v2"
+
+// Avoid using default entropy source in production
+func New() ulid.ULID {
+    return ulid.Make() // Uses default entropy, not suitable for high-volume production
+}
+```
+
+## Rule 2: Store ULIDs as Fixed-Length Strings
+Description: Store ULIDs as CHAR(26) in databases to optimize storage and indexing efficiency.
+
+### Good Example:
+```sql
+CREATE TABLE users (
+  id CHAR(26) PRIMARY KEY,
+  name TEXT NOT NULL
+);
+```
+
+### Bad Example:
+```sql
+CREATE TABLE users (
+  id VARCHAR(255) PRIMARY KEY, -- Inefficient variable-length storage
+  name TEXT NOT NULL
+);
+```
+
+## Rule 3: Use Monotonic Entropy for High-Frequency Generation
+Description: In scenarios requiring multiple ULIDs within the same millisecond, use monotonic entropy to maintain sortability.
+
+### Good Example:
+```go
+package id
+
+import (
+    "crypto/rand"
+    "github.com/oklog/ulid/v2"
+    "sync"
+    "time"
+)
+
+var (
+    entropy     = ulid.Monotonic(rand.Reader, 0)
+    entropyLock sync.Mutex
+)
+
+// NewMonotonic generates ULIDs that preserve ordering even within the same millisecond
+func NewMonotonic() ulid.ULID {
+    entropyLock.Lock()
+    defer entropyLock.Unlock()
+    return ulid.MustNew(ulid.Timestamp(time.Now()), entropy)
+}
+```
+
+### Bad Example:
+```go
+package id
+
+import (
+    "github.com/oklog/ulid/v2"
+    "math/rand"
+)
+
+// Avoid non-monotonic entropy when order matters
+func NewBatch(count int) []ulid.ULID {
+    ids := make([]ulid.ULID, count)
+    for i := 0; i < count; i++ {
+        ids[i] = ulid.MustNew(ulid.Now(), rand.New(rand.NewSource(time.Now().UnixNano())))
+    }
+    return ids
+}
+```
+
+## Rule 4: Integrate ULIDs with Database Operations
+Description: Use the native ulid.ULID type in Go structs to leverage automatic SQL scanning/valuing.
+
+### Good Example:
+```go
+package user
+
+import (
+    "database/sql"
+    "github.com/oklog/ulid/v2"
+)
+
+type User struct {
+    ID    ulid.ULID `db:"id" json:"id"`
+    Name  string    `db:"name" json:"name"`
+    Email string    `db:"email" json:"email"`
+}
+
+func GetUser(db *sql.DB, id ulid.ULID) (*User, error) {
+    // ULID works directly with database/sql
+    var user User
+    err := db.QueryRow("SELECT id, name, email FROM users WHERE id = ?", id).Scan(&user.ID, &user.Name, &user.Email)
+    return &user, err
+}
+```
+
+### Bad Example:
+```go
+package user
+
+import "database/sql"
+
+type User struct {
+    ID    string `db:"id" json:"id"` // Using string requires manual conversion
+    Name  string `db:"name" json:"name"`
+    Email string `db:"email" json:"email"`
+}
+
+func GetUser(db *sql.DB, idStr string) (*User, error) {
+    // Manual string handling loses type safety
+    var user User
+    err := db.QueryRow("SELECT id, name, email FROM users WHERE id = ?", idStr).Scan(&user.ID, &user.Name, &user.Email)
+    return &user, err
+}
+```
+
+## Rule 5: Implement Proper String Conversion
+Description: Provide consistent methods for ULID string representation and parsing.
+
+### Good Example:
+```go
+package id
+
+import (
+    "fmt"
+    "github.com/oklog/ulid/v2"
+)
+
+// Parse converts a string to a ULID with proper error handling
+func Parse(s string) (ulid.ULID, error) {
+    return ulid.Parse(s)
+}
+
+// String returns the canonical string representation
+func String(id ulid.ULID) string {
+    return id.String()
+}
+```
+
+### Bad Example:
+```go
+package id
+
+import (
+    "encoding/base32"
+    "github.com/oklog/ulid/v2"
+)
+
+// Don't implement custom string conversion
+func CustomFormat(id ulid.ULID) string {
+    // Inconsistent with standard ULID formatting
+    return base32.StdEncoding.EncodeToString(id[:])
+}
+```
+
+## Rule 6: Consider Performance Implications
+Description: Be aware of ULID size impact on database performance, especially for large datasets and complex joins.
+
+### Good Example:
+```go
+// Use appropriate indexing strategy
+// CREATE INDEX idx_users_created_at ON users(created_at);
+
+// Use ULIDs efficiently in queries
+func GetRecentUsers(db *sql.DB, limit int) ([]*User, error) {
+    rows, err := db.Query("SELECT id, name, email FROM users ORDER BY id DESC LIMIT ?", limit)
+    // Leverages lexicographical ordering of ULIDs
+    // Rest of implementation...
+}
+```
+
+### Bad Example:
+```go
+// Inefficient use of ULIDs in complex join without proper indexing
+func GetUserActivity(db *sql.DB, userID string) ([]Activity, error) {
+    // Using string type and not leveraging ULID properties
+    // No index optimization
+    query := `
+        SELECT a.* FROM activities a
+        JOIN user_activities ua ON ua.activity_id = a.id
+        WHERE ua.user_id = ?
+    `
+    // Rest of implementation...
+}
+```
+
+## Rule 7: Be Aware of ULID Timestamp Exposure
+Description: Consider the implications of timestamp exposure in ULIDs for sensitive data.
+
+### Good Example:
+```go
+package id
+
+import (
+    "crypto/rand"
+    "github.com/oklog/ulid/v2"
+    "time"
+)
+
+// For sensitive data where exact creation time shouldn't be exposed
+func NewWithObfuscatedTime() ulid.ULID {
+    // Round to nearest hour to reduce timestamp precision
+    roundedTime := time.Now().Truncate(time.Hour)
+    return ulid.MustNew(ulid.Timestamp(roundedTime), rand.Reader)
+}
+```
+
+### Bad Example:
+```go
+package id
+
+import "github.com/oklog/ulid/v2"
+
+// For sensitive resources, don't expose exact time
+func GetSensitiveResourceID() ulid.ULID {
+    return ulid.Make() // Exact timestamp is exposed
+}
+```

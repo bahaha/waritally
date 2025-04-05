@@ -5,6 +5,13 @@ BINARY_NAME=waritally
 MAIN_PACKAGE=./cmd/api
 GOFLAGS=-ldflags="-s -w"
 
+# Tool paths
+GOPATH=$(shell go env GOPATH)
+SQLC=$(GOPATH)/bin/sqlc
+GOOSE=$(GOPATH)/bin/goose
+TEMPL=$(GOPATH)/bin/templ
+AIR=$(GOPATH)/bin/air
+
 # Environment
 ENV_FILE=.env
 
@@ -19,24 +26,44 @@ deps:
 .PHONY: tools
 tools:
 	@echo "Installing development tools..."
-	@if ! command -v templ > /dev/null; then \
+	@if ! command -v $(TEMPL) > /dev/null; then \
 		echo "Installing templ..."; \
 		go install github.com/a-h/templ/cmd/templ@latest; \
 	fi
-	@if ! command -v air > /dev/null; then \
+	@if ! command -v $(AIR) > /dev/null; then \
 		echo "Installing air..."; \
 		go install github.com/air-verse/air@latest; \
+	fi
+	@if ! command -v $(GOOSE) > /dev/null; then \
+		echo "Installing goose..."; \
+		go install github.com/pressly/goose/v3/cmd/goose@latest; \
+	fi
+	@if ! command -v $(SQLC) > /dev/null; then \
+		echo "Installing sqlc..."; \
+		go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest; \
 	fi
 
 # Generate templ files
 .PHONY: templates
-templates:
+templates: tools
 	@echo "Generating templates..."
-	@templ generate
+	@$(TEMPL) generate
+
+# Generate sqlc code
+.PHONY: sqlc
+sqlc: tools
+	@echo "Generating sqlc code..."
+	@$(SQLC) generate
+
+# Run database migrations
+.PHONY: migrate
+migrate: tools
+	@echo "Running migrations..."
+	@$(GOOSE) -dir internal/db/migrations sqlite3 waritally.db up
 
 # Build the application
 .PHONY: build
-build: deps templates
+build: deps templates sqlc
 	@echo "Building $(BINARY_NAME)..."
 	@go build $(GOFLAGS) -o $(BINARY_NAME) $(MAIN_PACKAGE)
 
@@ -48,11 +75,11 @@ run: build
 
 # Run with hot reload using air
 .PHONY: dev
-dev: tools templates
+dev: tools templates sqlc
 	@echo "Running with hot reload..."
-	@air
+	@$(AIR)
 
-# Test the application
+# Run tests
 .PHONY: test
 test:
 	@echo "Running tests..."
@@ -63,19 +90,14 @@ test:
 clean:
 	@echo "Cleaning..."
 	@rm -f $(BINARY_NAME)
+	@rm -f waritally.db
 	@go clean
 
-# Set up initial database (to be implemented)
+# Set up development database
 .PHONY: db-setup
-db-setup:
+db-setup: tools
 	@echo "Setting up database..."
-	@echo "To be implemented"
-
-# Run database migrations (to be implemented)
-.PHONY: db-migrate
-db-migrate:
-	@echo "Running migrations..."
-	@echo "To be implemented"
+	@$(GOOSE) -dir internal/db/migrations sqlite3 waritally.db up
 
 # Default target
 .PHONY: all
