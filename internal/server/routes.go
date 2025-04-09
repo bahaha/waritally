@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
-	"waritally/cmd/web"
-	// "waritally/internal/server/handlers"
+	"waritally/internal/server/handlers"
+	"waritally/internal/server/views/misc"
 )
 
 // RegisterRoutes sets up all the routes for our application
@@ -26,14 +27,20 @@ func (s *Server) RegisterRoutes() http.Handler {
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
-
-	// Static assets
-	fileServer := http.FileServer(http.FS(web.Files))
-	r.Handle("/assets/*", fileServer)
+	r.Handle("/assets/*", middleware.NoCache(http.FileServer(http.FS(Files))))
 
 	// Health check and root path
 	r.Get("/health", s.healthCheck)
 	r.Get("/", s.handleHome)
+
+	r.Route("/dev", func(r chi.Router) {
+		r.Get("/theme", s.showThemeGallery())
+	})
+
+	r.Route("/trips", func(r chi.Router) {
+		r.Get("/", redirect("/trips/new"))
+		r.Get("/new", handlers.HandleNewTripCreation())
+	})
 
 	// API routes - to be expanded later
 	r.Route("/api", func(r chi.Router) {
@@ -44,6 +51,12 @@ func (s *Server) RegisterRoutes() http.Handler {
 	})
 
 	return r
+}
+
+func redirect(route string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, route, http.StatusPermanentRedirect)
+	}
 }
 
 // healthCheck provides a simple health check endpoint
@@ -62,5 +75,11 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("api", err, "failed to encode response")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
+	}
+}
+
+func (s *Server) showThemeGallery() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		templ.Handler(misc.ThemeGallery()).ServeHTTP(w, r)
 	}
 }

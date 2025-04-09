@@ -1,7 +1,7 @@
 # Makefile for Waritally project
 
 # Go settings
-BINARY_NAME=waritally
+BINARY_NAME=main
 MAIN_PACKAGE=./cmd/api
 GOFLAGS=-ldflags="-s -w"
 
@@ -27,18 +27,29 @@ tools:
 		echo "Installing air..."; \
 		go install github.com/air-verse/air@latest; \
 	fi
+	@if [ ! -f ./tailwindcss ]; then \
+		echo "Installing Tailwindcss CLI"; \
+		curl -sL https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-macos-arm64 -o ./tailwindcss; \
+		chmod +x ./tailwindcss; \
+	fi
 
 # Generate templ files
 .PHONY: templates
-templates:
+templates: tools
 	@echo "Generating templates..."
 	@templ generate
 
 # Build the application
 .PHONY: build
-build: deps templates
+build: deps templates css
 	@echo "Building $(BINARY_NAME)..."
 	@go build $(GOFLAGS) -o $(BINARY_NAME) $(MAIN_PACKAGE)
+
+.PHONY: css
+css: tools
+	@echo "Compiling CSS with tailwindcss..."
+	@./tailwindcss -i internal/server/assets/css/input.css -o internal/server/assets/css/global.css
+
 
 # Run the application
 .PHONY: run
@@ -48,7 +59,7 @@ run: build
 
 # Run with hot reload using air
 .PHONY: dev
-dev: tools templates
+dev: tools templates css
 	@echo "Running with hot reload..."
 	@air
 

@@ -1,0 +1,88 @@
+package layout
+
+templ BaseLayout(title string) {
+	<!DOCTYPE html>
+	<html>
+		<head>
+			<!-- Character encoding -->
+			<meta charset="UTF-8"/>
+			<!-- Security -->
+			<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+			<!-- 
+            <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src https://*; child-src 'none';"/>
+            -->
+			<!-- Viewport for responsive design -->
+			<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+			<!-- Page information -->
+			<title>{ title } - Waritally</title>
+			<!--
+            <meta name="description" content="A description of your web application">
+            <meta name="keywords" content="app, web application, keywords">
+            <meta name="author" content="Clay Cheng">
+            -->
+			<!-- Theme and appearance -->
+			<!--
+            <meta name="theme-color" content="#ffffff">
+            -->
+			<meta name="color-scheme" content="light dark"/>
+			<meta name="apple-mobile-web-app-capable" content="yes"/>
+			<meta name="mobile-web-app-capable" content="yes"/>
+			<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+			<!-- Open Graph / Social Media -->
+			<!--
+            <meta property="og:type" content="website">
+            <meta property="og:url" content="https://yourdomain.com/">
+            <meta property="og:title" content="App Title">
+            <meta property="og:description" content="A description of your web application">
+            <meta property="og:image" content="https://yourdomain.com/og-image.jpg">
+            -->
+			<!-- Twitter Cards -->
+			<!--
+            <meta name="twitter:card" content="summary_large_image">
+            <meta name="twitter:url" content="https://yourdomain.com/">
+            <meta name="twitter:title" content="App Title">
+            <meta name="twitter:description" content="A description of your web application">
+            <meta name="twitter:image" content="https://yourdomain.com/twitter-image.jpg">
+            -->
+			<!-- Favicon and app icons -->
+			<!--
+            <link rel="icon" href="/favicon.ico" sizes="any">
+            <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+            <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+            <link rel="manifest" href="/manifest.json">
+            -->
+			<!-- Preload critical resources -->
+			<!--
+            <link rel="preload" href="/fonts/main-font.woff2" as="font" type="font/woff2" crossorigin>
+            -->
+			<!-- Web App Manifest -->
+			<!--
+            <link rel="manifest" href="/manifest.json">
+            -->
+			<!-- Preconnect to essential domains -->
+			<!--
+            <link rel="preconnect" href="https://cdn.yourdomain.com">
+            <link rel="dns-prefetch" href="https://api.yourdomain.com">
+            -->
+			<!-- Structured data for SEO -->
+			<!--
+            <script type="application/ld+json">
+            {
+              "@context": "https://schema.org",
+              "@type": "WebApplication",
+              "name": "App Title",
+              "description": "A description of your web application",
+              "url": "https://yourdomain.com"
+            }
+            </script>
+            -->
+			<link rel="stylesheet" href="/assets/css/global.css"/>
+		</head>
+		<body class="bg-background text-foreground antialiased">
+			<main role="main" class="container mx-auto px-4 py-6">
+				{ children... }
+			</main>
+			<script src="/assets/js/htmx@2.0.4.min.js"></script>
+		</body>
+	</html>
+}
