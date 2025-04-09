@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	country "waritally/internal/country/domain"
 	"waritally/internal/server/logger"
 )
 
@@ -12,22 +13,24 @@ import (
 type Server struct {
 	cfg    *ServerConfig
 	logger logger.Logger
-	
+
 	// In future we'll add:
-	// - repositories
+	countryRepo country.CountryRepository
 	// - services
-	// - other dependencies 
+	// - other dependencies
 }
 
 // NewServer creates a new HTTP server with all dependencies
 func NewServer(
 	cfg *ServerConfig,
 	logger logger.Logger,
-	// Additional dependencies will be added here
+
+	countryRepo country.CountryRepository,
 ) *http.Server {
 	server := &Server{
-		cfg:    cfg,
-		logger: logger,
+		cfg:         cfg,
+		logger:      logger,
+		countryRepo: countryRepo,
 	}
 
 	// Create and configure the HTTP server

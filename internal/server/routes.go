@@ -39,7 +39,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.Route("/trips", func(r chi.Router) {
 		r.Get("/", redirect("/trips/new"))
-		r.Get("/new", handlers.HandleNewTripCreation())
+		r.Get("/new", handlers.HandleNewTripCreation(s.countryRepo))
 	})
 
 	// API routes - to be expanded later

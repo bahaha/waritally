@@ -1,9 +1,70 @@
 package trips
 
-import "waritally/internal/server/views/layout"
+import (
+	"waritally/internal/server/views/layout"
+	"waritally/internal/server/views/trips/props"
+	"waritally/pkg/components/ui/form"
+	"waritally/pkg/components/ui/input"
+	"waritally/pkg/components/ui/label"
+)
 
-templ NewTrip() {
+templ NewTrip(props *props.NewTripProps) {
+	{{ NameContext := &form.FormItemContext{ID: "ABC"} }}
+	{{ CountryContext := &form.FormItemContext{ID: "DEF"} }}
+	{{ LocationContext := &form.FormItemContext{ID: "GHI"} }}
 	@layout.BaseLayout("Create New Trip") {
 		<h1 class="text-3xl font-bold text-primary mb-6">Create New Trip</h1>
+		<form class="space-y-3">
+			@form.FormItem(
+				form.New().WithFormItem(NameContext),
+			) {
+				<label
+					{ label.New(label.LabelProps().
+                WithinContext(ctx, NameContext.ID).
+                WithClass("text-2xl").
+                WithRequired(true))... }
+				>
+					Name
+				</label>
+				<input
+					placeholder="Your name"
+					required
+					autofocus
+					{ input.New(input.InputProps().WithinContext(ctx, NameContext.ID)) ... }
+				/>
+			}
+			@form.FormItem(
+				form.New().WithFormItem(CountryContext),
+			) {
+				<label
+					{ label.New(label.LabelProps().
+                WithinContext(ctx, CountryContext.ID).
+                WithClass("text-2xl").
+                WithRequired(true))... }
+				>
+					Country
+				</label>
+				<select
+					name="country"
+					required
+					hx-trigger="change"
+					hx-get="/api/locations"
+					hx-target="#location-tags"
+				>
+					<option value="">Select a country</option>
+					for _, country := range props.Countries {
+						<option value={ country.Code }>{ country.Name }</option>
+					}
+				</select>
+			}
+			@form.FormItem(
+				form.New().WithFormItem(LocationContext),
+			) {
+				<label { label.New(label.LabelProps().WithinContext(ctx, CountryContext.ID))... }>
+					Locations
+				</label>
+				<div id="location-tags" class="flex flex-wrap gap-2"></div>
+			}
+		</form>
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	_ "github.com/joho/godotenv/autoload"
+	country "waritally/internal/country/infrastructure"
 	"waritally/internal/server"
 	"waritally/internal/server/logger"
 )
@@ -49,8 +50,10 @@ func run(
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
+	countryRepo := country.NewStaticCountryRepository()
+
 	// Initialize server with dependencies
-	srv := server.NewServer(cfg, log)
+	srv := server.NewServer(cfg, log, countryRepo)
 
 	// Start server in a goroutine
 	serverError := make(chan error, 1)
