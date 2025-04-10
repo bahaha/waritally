@@ -45,9 +45,11 @@ func HandleGetCountryAreas(log logger.Logger, countryRepo country.CountryReposit
 			if country.IsCountryNotFoundError(err) {
 				log.Error("country_areas", err, "country not found in our system",
 					"country", input.Country)
+				w.WriteHeader(http.StatusNotFound)
 			} else {
 				log.Error("country_areas", err, "failed to load areas for country",
 					"country", input.Country)
+				w.WriteHeader(http.StatusInternalServerError)
 			}
 			renderRefetchCountryErrorHandling(w, r, input.Country)
 			return
