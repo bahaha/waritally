@@ -1,0 +1,37 @@
+package trips
+
+import (
+	country "waritally/internal/country/domain"
+	"waritally/pkg/components/svg"
+	"waritally/pkg/components/ui/button"
+)
+
+templ LocationTags(locations []country.Area) {
+	for _, location := range locations {
+		<button
+			type="button"
+			class="px-3 py-1 rounded-full text-sm border border-border bg-card text-card-foreground hover:bg-secondary/20 transition-colors"
+			data-location={ location.Name }
+			data-select="false"
+		>
+			{ location.Name }
+		</button>
+	}
+}
+
+templ LocationTagsError(countryCode string) {
+	<div id="location-tags" class="flex flex-col items-center justify-center space-y-4 p-4">
+		<p class="text-sm text-destructive">Failed to load locations</p>
+		<button
+			type="button"
+			{ button.New(button.ButtonProps().
+				WithVariant(button.Variants.Ghost).
+				WithSize(button.Sizes.Small))... }
+			hx-get={ "/api/locations?country=" + countryCode }
+			hx-target="#location-tags"
+		>
+			@svg.Retry("")
+			<span>Retry</span>
+		</button>
+	</div>
+}

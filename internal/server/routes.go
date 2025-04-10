@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/a-h/templ"
+	"github.com/ggicci/httpin"
+	httpin_integration "github.com/ggicci/httpin/integration"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -16,6 +18,8 @@ import (
 // RegisterRoutes sets up all the routes for our application
 func (s *Server) RegisterRoutes() http.Handler {
 	r := chi.NewRouter()
+
+	httpin_integration.UseGochiURLParam("path", chi.URLParam)
 
 	// Middleware
 	r.Use(middleware.Logger)
@@ -39,15 +43,13 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.Route("/trips", func(r chi.Router) {
 		r.Get("/", redirect("/trips/new"))
-		r.Get("/new", handlers.HandleNewTripCreation(s.countryRepo))
+		r.Get("/new", handlers.HandleNewTripCreation(s.logger, s.countryRepo))
 	})
 
 	// API routes - to be expanded later
 	r.Route("/api", func(r chi.Router) {
-		// In future, we'll add:
-		// r.Route("/users", s.userRoutes)
-		// r.Route("/activities", s.activityRoutes)
-		// r.Route("/expenses", s.expenseRoutes)
+		r.With(httpin.NewInput(handlers.GetCountryAreasRequest{})).
+			Get("/locations", handlers.HandleGetCountryAreas(s.logger, s.countryRepo))
 	})
 
 	return r
