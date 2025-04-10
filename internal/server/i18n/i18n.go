@@ -13,10 +13,10 @@ import (
 )
 
 var (
-	bundle      *goi18n.Bundle
-	log         logger.Logger
-	cfg         *config.AppConfig
-	localizers  sync.Map
+	bundle     *goi18n.Bundle
+	log        logger.Logger
+	cfg        *config.AppConfig
+	localizers sync.Map
 )
 
 // Initialize initializes the i18n package with a logger and config
@@ -39,11 +39,11 @@ func Initialize(l logger.Logger, config *config.AppConfig) {
 
 	// Load translation files
 	loadedLanguages := make([]string, 0)
-	
+
 	for _, lang := range cfg.I18n.SupportedLangs {
 		if err := loadTranslationFile(lang); err != nil {
-			log.Error("i18n", err, "Failed to load translations", 
-				"language", lang, 
+			log.Error("i18n", err, "Failed to load translations",
+				"language", lang,
 				"locales_path", cfg.I18n.LocalesPath)
 		} else {
 			loadedLanguages = append(loadedLanguages, lang)
