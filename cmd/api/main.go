@@ -10,10 +10,11 @@ import (
 	"syscall"
 	"time"
 
-	_ "github.com/joho/godotenv/autoload"
 	country "waritally/internal/country/infrastructure"
 	"waritally/internal/server"
 	"waritally/internal/server/logger"
+
+	_ "github.com/joho/godotenv/autoload"
 )
 
 func main() {
@@ -38,13 +39,11 @@ func run(
 	// Initialize logger
 	log := logger.NewZerologLogger(stdout, getenv("APP_ENV") != "production")
 
-	// Generate correlation ID for this process
 	correlationID := log.NewCorrelationID()
 	processLog := log.With("process_id", correlationID)
 
 	processLog.Info("main", "Starting Waritally application")
 
-	// Load config from environment
 	cfg, err := server.LoadConfig(getenv)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
@@ -52,7 +51,6 @@ func run(
 
 	countryRepo := country.NewStaticCountryRepository()
 
-	// Initialize server with dependencies
 	srv := server.NewServer(cfg, log, countryRepo)
 
 	// Start server in a goroutine

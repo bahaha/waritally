@@ -1,6 +1,7 @@
 package trips
 
 import (
+	"waritally/internal/server/i18n"
 	"waritally/internal/server/views/layout"
 	"waritally/internal/server/views/trips/props"
 	"waritally/pkg/components/ui/form"
@@ -12,8 +13,8 @@ templ NewTrip(props *props.NewTripProps) {
 	{{ NameContext := &form.FormItemContext{ID: "ABC"} }}
 	{{ CountryContext := &form.FormItemContext{ID: "DEF"} }}
 	{{ LocationContext := &form.FormItemContext{ID: "GHI"} }}
-	@layout.BaseLayout("Create New Trip") {
-		<h1 class="text-3xl font-bold text-primary mb-6">Create New Trip</h1>
+	@layout.BaseLayout(i18n.GetTranslation(ctx.Value("lang").(string), "trip.create.title", nil)) {
+		<h1 class="text-3xl font-bold text-primary mb-6">{ i18n.GetTranslation(ctx.Value("lang").(string), "trip.create.title", nil) }</h1>
 		<form class="space-y-3">
 			@form.FormItem(
 				form.New().WithFormItem(NameContext),
@@ -24,10 +25,10 @@ templ NewTrip(props *props.NewTripProps) {
                 WithClass("text-2xl").
                 WithRequired(true))... }
 				>
-					Name
+					{ i18n.GetTranslation(ctx.Value("lang").(string), "trip.form.name", nil) }
 				</label>
 				<input
-					placeholder="Your name"
+					placeholder={ i18n.GetTranslation(ctx.Value("lang").(string), "trip.form.name.placeholder", nil) }
 					required
 					autofocus
 					{ input.New(input.InputProps().WithinContext(ctx, NameContext.ID)) ... }
@@ -42,7 +43,7 @@ templ NewTrip(props *props.NewTripProps) {
                 WithClass("text-2xl").
                 WithRequired(true))... }
 				>
-					Country
+					{ i18n.GetTranslation(ctx.Value("lang").(string), "trip.form.country", nil) }
 				</label>
 				<select
 					name="country"
@@ -51,7 +52,7 @@ templ NewTrip(props *props.NewTripProps) {
 					hx-get="/api/locations"
 					hx-target="#location-tags"
 				>
-					<option value="">Select a country</option>
+					<option value="">{ i18n.GetTranslation(ctx.Value("lang").(string), "trip.form.country.select", nil) }</option>
 					for _, country := range props.Countries {
 						<option value={ country.Code }>{ country.Name }</option>
 					}
@@ -61,7 +62,7 @@ templ NewTrip(props *props.NewTripProps) {
 				form.New().WithFormItem(LocationContext),
 			) {
 				<label { label.New(label.LabelProps().WithinContext(ctx, CountryContext.ID))... }>
-					Locations
+					{ i18n.GetTranslation(ctx.Value("lang").(string), "trip.form.locations", nil) }
 				</label>
 				<div id="location-tags" class="flex flex-wrap gap-2"></div>
 			}

@@ -1,0 +1,26 @@
+{
+  "trip.create.title": {
+    "id": "trip.create.title",
+    "translation": "Create New Trip"
+  },
+  "trip.form.name": {
+    "id": "trip.form.name",
+    "translation": "Name"
+  },
+  "trip.form.name.placeholder": {
+    "id": "trip.form.name.placeholder",
+    "translation": "Your name"
+  },
+  "trip.form.country": {
+    "id": "trip.form.country",
+    "translation": "Country"
+  },
+  "trip.form.country.select": {
+    "id": "trip.form.country.select",
+    "translation": "Select a country"
+  },
+  "trip.form.locations": {
+    "id": "trip.form.locations",
+    "translation": "Locations"
+  }
+} 

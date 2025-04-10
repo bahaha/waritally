@@ -6,7 +6,9 @@ import (
 	"time"
 
 	country "waritally/internal/country/domain"
+	"waritally/internal/server/i18n"
 	"waritally/internal/server/logger"
+	"waritally/internal/server/middleware"
 )
 
 // Server represents our main application server
@@ -27,6 +29,9 @@ func NewServer(
 
 	countryRepo country.CountryRepository,
 ) *http.Server {
+	i18n.Initialize(logger)
+	middleware.InitMiddleware(logger)
+
 	server := &Server{
 		cfg:         cfg,
 		logger:      logger,

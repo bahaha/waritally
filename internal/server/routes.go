@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/cors"
 
 	"waritally/internal/server/handlers"
+	mw "waritally/internal/server/middleware"
 	"waritally/internal/server/views/misc"
 )
 
@@ -24,6 +25,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// Middleware
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(mw.I18nMiddleware)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"https://*", "http://*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
