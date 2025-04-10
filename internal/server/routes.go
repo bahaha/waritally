@@ -43,13 +43,13 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.Route("/trips", func(r chi.Router) {
 		r.Get("/", redirect("/trips/new"))
-		r.Get("/new", handlers.HandleNewTripCreation(s.countryRepo))
+		r.Get("/new", handlers.HandleNewTripCreation(s.logger, s.countryRepo))
 	})
 
 	// API routes - to be expanded later
 	r.Route("/api", func(r chi.Router) {
 		r.With(httpin.NewInput(handlers.GetCountryAreasRequest{})).
-			Get("/locations", handlers.HandleGetCountryAreas(s.countryRepo))
+			Get("/locations", handlers.HandleGetCountryAreas(s.logger, s.countryRepo))
 	})
 
 	return r

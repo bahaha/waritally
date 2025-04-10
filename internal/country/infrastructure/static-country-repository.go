@@ -7,9 +7,8 @@ import (
 )
 
 type StaticCountryRepository struct {
-	definitions []countries.CountryDefinition
-	cachedAll   []domain.Country
-	codeToAreas map[string][]domain.Area
+	countries    []domain.Country
+	countryAreas map[string][]domain.Area
 }
 
 func NewStaticCountryRepository() domain.CountryRepository {
@@ -49,19 +48,22 @@ func newStaticCountryRepositoryWithOrder(customOrder []string) domain.CountryRep
 	}
 
 	return &StaticCountryRepository{
-		definitions: definitions,
-		cachedAll:   cachedAll,
-		codeToAreas: codeToAreas,
+		countries:    cachedAll,
+		countryAreas: codeToAreas,
 	}
 }
 
 func (r *StaticCountryRepository) GetAll(ctx context.Context) ([]domain.Country, error) {
-	return r.cachedAll, nil
+	return r.countries, nil
 }
 
 func (r *StaticCountryRepository) GetCountryArea(
 	ctx context.Context,
 	countryCode string,
 ) ([]domain.Area, error) {
-	return r.codeToAreas[countryCode], nil
+	areas, exists := r.countryAreas[countryCode]
+	if !exists {
+		return nil, domain.NewCountryNotFoundError(countryCode)
+	}
+	return areas, nil
 }

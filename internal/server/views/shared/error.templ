@@ -1,0 +1,17 @@
+package shared
+
+import "strconv"
+
+templ ErrorPage(status int, message string) {
+	<div class="min-h-screen bg-gray-100 flex flex-col justify-center items-center px-6">
+		<div class="max-w-md w-full space-y-8 text-center">
+			<h1 class="text-6xl font-bold text-gray-900">{ strconv.Itoa(status) }</h1>
+			<p class="text-xl text-gray-600">{ message }</p>
+			<div class="mt-8">
+				<a href="/" class="text-indigo-600 hover:text-indigo-500">
+					← Back to Home
+				</a>
+			</div>
+		</div>
+	</div>
+} 
