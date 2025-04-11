@@ -10,11 +10,11 @@ import (
 	"syscall"
 
 	country "waritally/internal/country/infrastructure"
-	"waritally/internal/infra/config"
+	"waritally/internal/infra"
 	"waritally/internal/server"
 	"waritally/internal/server/logger"
 
-	_ "github.com/joho/godotenv/autoload"
+	_ "waritally/pkg/config/autoload"
 )
 
 func main() {
@@ -44,7 +44,7 @@ func run(
 
 	processLog.Info("main", "Starting Waritally application")
 
-	cfg, err := config.LoadConfig(getenv)
+	cfg, err := infra.LoadConfig(getenv)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}

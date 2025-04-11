@@ -6,7 +6,7 @@ import (
 	"time"
 
 	country "waritally/internal/country/domain"
-	"waritally/internal/infra/config"
+	"waritally/internal/infra"
 	"waritally/internal/server/i18n"
 	"waritally/internal/server/logger"
 	"waritally/internal/server/middleware"
@@ -14,7 +14,7 @@ import (
 
 // Server represents our main application server
 type Server struct {
-	cfg    *config.AppConfig
+	cfg    *infra.AppConfig
 	logger logger.Logger
 
 	// In future we'll add:
@@ -25,7 +25,7 @@ type Server struct {
 
 // NewServer creates a new HTTP server with all dependencies
 func NewServer(
-	cfg *config.AppConfig,
+	cfg *infra.AppConfig,
 	logger logger.Logger,
 	countryRepo country.CountryRepository,
 ) *http.Server {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"waritally/internal/infra/config"
+	"waritally/internal/infra"
 	"waritally/internal/server/logger"
 
 	"github.com/BurntSushi/toml"
@@ -15,12 +15,12 @@ import (
 var (
 	bundle      *goi18n.Bundle
 	log         logger.Logger
-	cfg         *config.AppConfig
+	cfg         *infra.AppConfig
 	localizers  sync.Map
 )
 
 // Initialize initializes the i18n package with a logger and config
-func Initialize(l logger.Logger, config *config.AppConfig) {
+func Initialize(l logger.Logger, config *infra.AppConfig) {
 	log = l.With("component", "i18n")
 	cfg = config
 
