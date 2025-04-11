@@ -8,12 +8,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	_ "github.com/joho/godotenv/autoload"
 	country "waritally/internal/country/infrastructure"
+	"waritally/internal/infra/config"
 	"waritally/internal/server"
 	"waritally/internal/server/logger"
+
+	_ "github.com/joho/godotenv/autoload"
 )
 
 func main() {
@@ -38,21 +39,18 @@ func run(
 	// Initialize logger
 	log := logger.NewZerologLogger(stdout, getenv("APP_ENV") != "production")
 
-	// Generate correlation ID for this process
 	correlationID := log.NewCorrelationID()
 	processLog := log.With("process_id", correlationID)
 
 	processLog.Info("main", "Starting Waritally application")
 
-	// Load config from environment
-	cfg, err := server.LoadConfig(getenv)
+	cfg, err := config.LoadConfig(getenv)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
 	countryRepo := country.NewStaticCountryRepository()
 
-	// Initialize server with dependencies
 	srv := server.NewServer(cfg, log, countryRepo)
 
 	// Start server in a goroutine
@@ -76,7 +74,7 @@ func run(
 		processLog.Info("server", "shutting down server gracefully, press <C-c> again to force")
 
 		// Create a timeout context for shutdown
-		shutdownCtx, stop := context.WithTimeout(context.Background(), 5*time.Second)
+		shutdownCtx, stop := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 		defer stop()
 
 		if err := srv.Shutdown(shutdownCtx); err != nil {

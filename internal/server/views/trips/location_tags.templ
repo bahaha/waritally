@@ -2,19 +2,21 @@ package trips
 
 import (
 	country "waritally/internal/country/domain"
+	"waritally/internal/server/middleware"
 	"waritally/pkg/components/svg"
 	"waritally/pkg/components/ui/button"
 )
 
 templ LocationTags(locations []country.Area) {
+	{{ t := middleware.GetSimpleTranslateFunc(ctx) }}
 	for _, location := range locations {
 		<button
 			type="button"
 			class="px-3 py-1 rounded-full text-sm border border-border bg-card text-card-foreground hover:bg-secondary/20 transition-colors"
-			data-location={ location.Name }
+			data-location={ location.Code }
 			data-select="false"
 		>
-			{ location.Name }
+			{ t(location.Name) }
 		</button>
 	}
 }
@@ -29,6 +31,7 @@ templ LocationTagsError(countryCode string) {
 				WithSize(button.Sizes.Small))... }
 			hx-get={ "/api/locations?country=" + countryCode }
 			hx-target="#location-tags"
+			hx-include="#lang"
 		>
 			@svg.Retry("")
 			<span>Retry</span>

@@ -26,15 +26,15 @@ func KoreaDefinition() CountryDefinition {
 	return CountryDefinition{
 		Country: domain.Country{
 			Code:     Korea.Code,
-			Name:     "Korea",
+			Name:     "country.korea",
 			Currency: Korea.Currency,
 		},
 		Areas: []domain.Area{
-			{Name: "Seoul", Code: Korea.Area.Seoul},
-			{Name: "Busan", Code: Korea.Area.Busan},
-			{Name: "Incheon", Code: Korea.Area.Incheon},
-			{Name: "Daegu", Code: Korea.Area.Daegu},
-			{Name: "Jeju", Code: Korea.Area.Jeju},
+			{Name: "country.korea.area.seoul", Code: Korea.Area.Seoul},
+			{Name: "country.korea.area.busan", Code: Korea.Area.Busan},
+			{Name: "country.korea.area.incheon", Code: Korea.Area.Incheon},
+			{Name: "country.korea.area.daegu", Code: Korea.Area.Daegu},
+			{Name: "country.korea.area.jeju", Code: Korea.Area.Jeju},
 		},
 	}
 }

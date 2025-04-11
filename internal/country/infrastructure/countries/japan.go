@@ -30,17 +30,17 @@ func JapanDefinition() CountryDefinition {
 	return CountryDefinition{
 		Country: domain.Country{
 			Code:     Japan.Code,
-			Name:     "Japan",
+			Name:     "country.japan",
 			Currency: Japan.Currency,
 		},
 		Areas: []domain.Area{
-			{Name: "Tokyo", Code: Japan.Area.Tokyo},
-			{Name: "Kansai", Code: Japan.Area.Kansai},
-			{Name: "Hokkaido", Code: Japan.Area.Hokkaido},
-			{Name: "Kyushu", Code: Japan.Area.Kyushu},
-			{Name: "Chugoku", Code: Japan.Area.Chugoku},
-			{Name: "Tohoku", Code: Japan.Area.Tohoku},
-			{Name: "Chubu", Code: Japan.Area.Chubu},
+			{Name: "country.japan.area.tokyo", Code: Japan.Area.Tokyo},
+			{Name: "country.japan.area.kansai", Code: Japan.Area.Kansai},
+			{Name: "country.japan.area.hokkaido", Code: Japan.Area.Hokkaido},
+			{Name: "country.japan.area.kyushu", Code: Japan.Area.Kyushu},
+			{Name: "country.japan.area.chugoku", Code: Japan.Area.Chugoku},
+			{Name: "country.japan.area.tohoku", Code: Japan.Area.Tohoku},
+			{Name: "country.japan.area.chubu", Code: Japan.Area.Chubu},
 		},
 	}
 }

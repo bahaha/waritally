@@ -1,6 +1,7 @@
 package trips
 
 import (
+	"waritally/internal/server/middleware"
 	"waritally/internal/server/views/layout"
 	"waritally/internal/server/views/trips/props"
 	"waritally/pkg/components/ui/form"
@@ -12,8 +13,9 @@ templ NewTrip(props *props.NewTripProps) {
 	{{ NameContext := &form.FormItemContext{ID: "ABC"} }}
 	{{ CountryContext := &form.FormItemContext{ID: "DEF"} }}
 	{{ LocationContext := &form.FormItemContext{ID: "GHI"} }}
-	@layout.BaseLayout("Create New Trip") {
-		<h1 class="text-3xl font-bold text-primary mb-6">Create New Trip</h1>
+	{{ t := middleware.GetSimpleTranslateFunc(ctx) }}
+	@layout.BaseLayout(t("trip.create.title")) {
+		<h1 class="text-3xl font-bold text-primary mb-6">{ t("trip.create.title") }</h1>
 		<form class="space-y-3">
 			@form.FormItem(
 				form.New().WithFormItem(NameContext),
@@ -24,10 +26,10 @@ templ NewTrip(props *props.NewTripProps) {
                 WithClass("text-2xl").
                 WithRequired(true))... }
 				>
-					Name
+					{ t("trip.form.name") }
 				</label>
 				<input
-					placeholder="Your name"
+					placeholder={ t("trip.form.name.placeholder") }
 					required
 					autofocus
 					{ input.New(input.InputProps().WithinContext(ctx, NameContext.ID)) ... }
@@ -42,7 +44,7 @@ templ NewTrip(props *props.NewTripProps) {
                 WithClass("text-2xl").
                 WithRequired(true))... }
 				>
-					Country
+					{ t("trip.form.country") }
 				</label>
 				<select
 					name="country"
@@ -50,10 +52,11 @@ templ NewTrip(props *props.NewTripProps) {
 					hx-trigger="change"
 					hx-get="/api/locations"
 					hx-target="#location-tags"
+					hx-include="#lang"
 				>
-					<option value="">Select a country</option>
+					<option value="">{ t("trip.form.country.select") }</option>
 					for _, country := range props.Countries {
-						<option value={ country.Code }>{ country.Name }</option>
+						<option value={ country.Code }>{ t(country.Name) }</option>
 					}
 				</select>
 			}
@@ -61,7 +64,7 @@ templ NewTrip(props *props.NewTripProps) {
 				form.New().WithFormItem(LocationContext),
 			) {
 				<label { label.New(label.LabelProps().WithinContext(ctx, CountryContext.ID))... }>
-					Locations
+					{ t("trip.form.locations") }
 				</label>
 				<div id="location-tags" class="flex flex-wrap gap-2"></div>
 			}

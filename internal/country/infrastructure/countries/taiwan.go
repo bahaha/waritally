@@ -26,15 +26,15 @@ func TaiwanDefinition() CountryDefinition {
 	return CountryDefinition{
 		Country: domain.Country{
 			Code:     Taiwan.Code,
-			Name:     "Taiwan",
+			Name:     "country.taiwan",
 			Currency: Taiwan.Currency,
 		},
 		Areas: []domain.Area{
-			{Name: "Taipei", Code: Taiwan.Area.Taipei},
-			{Name: "Tainan", Code: Taiwan.Area.Tainan},
-			{Name: "Kaohsiung", Code: Taiwan.Area.Kaohsiung},
-			{Name: "Taichung", Code: Taiwan.Area.Taichung},
-			{Name: "Hsinchu", Code: Taiwan.Area.Hsinchu},
+			{Name: "country.taiwan.area.taipei", Code: Taiwan.Area.Taipei},
+			{Name: "country.taiwan.area.tainan", Code: Taiwan.Area.Tainan},
+			{Name: "country.taiwan.area.kaohsiung", Code: Taiwan.Area.Kaohsiung},
+			{Name: "country.taiwan.area.taichung", Code: Taiwan.Area.Taichung},
+			{Name: "country.taiwan.area.hsinchu", Code: Taiwan.Area.Hsinchu},
 		},
 	}
 }

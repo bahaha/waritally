@@ -1,6 +1,9 @@
 package layout
 
+import "waritally/internal/server/middleware"
+
 templ BaseLayout(title string) {
+	{{ lang, supportedLang := middleware.GetLanguage(ctx) }}
 	<!DOCTYPE html>
 	<html>
 		<head>
@@ -82,6 +85,9 @@ templ BaseLayout(title string) {
 			<main role="main" class="container mx-auto px-4 py-6">
 				{ children... }
 			</main>
+			if supportedLang {
+				<input id="lang" name="lang" type="hidden" value={ lang }/>
+			}
 			<script src="/assets/js/htmx@2.0.4.min.js"></script>
 		</body>
 	</html>

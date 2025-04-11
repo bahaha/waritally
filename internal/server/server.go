@@ -6,12 +6,15 @@ import (
 	"time"
 
 	country "waritally/internal/country/domain"
+	"waritally/internal/infra/config"
+	"waritally/internal/server/i18n"
 	"waritally/internal/server/logger"
+	"waritally/internal/server/middleware"
 )
 
 // Server represents our main application server
 type Server struct {
-	cfg    *ServerConfig
+	cfg    *config.AppConfig
 	logger logger.Logger
 
 	// In future we'll add:
@@ -22,11 +25,14 @@ type Server struct {
 
 // NewServer creates a new HTTP server with all dependencies
 func NewServer(
-	cfg *ServerConfig,
+	cfg *config.AppConfig,
 	logger logger.Logger,
-
 	countryRepo country.CountryRepository,
 ) *http.Server {
+	// Initialize i18n with the application config
+	i18n.Initialize(logger, cfg)
+	middleware.InitMiddleware(logger)
+
 	server := &Server{
 		cfg:         cfg,
 		logger:      logger,

@@ -1,4 +1,4 @@
-package server
+package config
 
 import (
 	"fmt"
@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// ServerConfig holds all configuration for the server
-type ServerConfig struct {
+// AppConfig holds all configuration for the application
+type AppConfig struct {
 	Dev    bool
 	Server struct {
 		Host            string        `env:"SERVER_HOST" default:"localhost"`
@@ -19,16 +19,15 @@ type ServerConfig struct {
 		SupportedLangs  []string `env:"I18N_SUPPORTED_LANGS" default:"en,zh-TW,ja"`
 		DefaultLang     string   `env:"I18N_DEFAULT_LANG" default:"en"`
 		FallbackLang    string   `env:"I18N_FALLBACK_LANG" default:"en"`
-		CacheLocalizers bool     `env:"I18N_CACHE_LOCALIZERS" default:"true"`
 	}
 	// Database configuration would go here
 	// Auth configuration would go here
 	// Other service configs would go here
 }
 
-// LoadConfig creates a new ServerConfig from environment variables
-func LoadConfig(getenv func(string) string) (*ServerConfig, error) {
-	cfg := &ServerConfig{}
+// LoadConfig creates a new AppConfig from environment variables
+func LoadConfig(getenv func(string) string) (*AppConfig, error) {
+	cfg := &AppConfig{}
 
 	// Set development mode
 	cfg.Dev = getenv("APP_ENV") != "production"
@@ -85,10 +84,6 @@ func LoadConfig(getenv func(string) string) (*ServerConfig, error) {
 	if cfg.I18n.FallbackLang == "" {
 		cfg.I18n.FallbackLang = "en"
 	}
-	
-	// Default to true for caching localizers
-	cacheLocalizersStr := getenv("I18N_CACHE_LOCALIZERS")
-	cfg.I18n.CacheLocalizers = cacheLocalizersStr != "false"
 
 	return cfg, nil
 }
