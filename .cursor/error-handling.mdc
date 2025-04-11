@@ -1,455 +1,200 @@
 ---
-description: 
+description: Error handling guidelines for the Waritally project
 globs: 
 alwaysApply: false
 ---
-## Rule 1: Return Errors from Functions
-Description: Functions should return an error as the last value to allow explicit error checking, a core Go principle. In Chi, this ensures handlers can propagate errors for proper handling.
+
+## Rule 1: Use Sentinel Errors for Error Types
+Description: Define base error types using sentinel errors for each distinct error case. This allows for error type checking across error wrapping chains using `errors.Is`.
 
 ### Good Example:
 ```go
-package main
+package domain
 
-import (
-	"fmt"
-	"net/http"
+import "errors"
 
-	"github.com/go-chi/chi/v5"
+var (
+	ErrCountryNotFound = errors.New("country not found")
+	ErrInvalidCountry  = errors.New("invalid country data")
 )
 
-func fetchUserData(id string) (string, error) {
-	if id == "" {
-		return "", fmt.Errorf("empty user ID")
-	}
-	return "user data", nil
-}
-
-func getUser(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	data, err := fetchUserData(id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	w.Write([]byte(data))
-}
-
-func main() {
-	r := chi.NewRouter()
-	r.Get("/user/{id}", getUser)
-	http.ListenAndServe(":8080", r)
+func IsCountryNotFoundError(err error) bool {
+	return errors.Is(err, ErrCountryNotFound)
 }
 ```
 
-### Bad Example
+### Bad Example:
 ```go
-package main
+package domain
 
-import (
-	"net/http"
+// Bad: Using string constants or direct error creation
+const ErrCountryNotFound = "country not found"
 
-	"github.com/go-chi/chi/v5"
-)
-
-func fetchUserData(id string) string { // Bad: No error return
-	if id == "" {
-		return "error: empty ID" // No way to distinguish error from data
-	}
-	return "user data"
-}
-
-func getUser(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	data := fetchUserData(id) // No error checking possible
-	w.Write([]byte(data))
-}
-
-func main() {
-	r := chi.NewRouter()
-	r.Get("/user/{id}", getUser)
-	http.ListenAndServe(":8080", r)
+func IsCountryNotFound(err error) bool {
+	return err.Error() == ErrCountryNotFound // Don't compare error strings
 }
 ```
 
-## Rule 2: Always Check for Errors
-Description: Explicitly check if an error is not nil after calling a function that returns an error. In Chi, this prevents silent failures in handlers.
+## Rule 2: Wrap Errors with Context
+Description: When domain context is needed, wrap base errors using a custom error type that implements both `Error()` and `Unwrap()`. This maintains the error chain while adding structured context.
 
 ### Good Example:
 ```go
-package main
+package domain
 
-import (
-	"net/http"
+type CountryError struct {
+	Err         error
+	CountryCode string
+}
 
-	"github.com/go-chi/chi/v5"
-)
+func (e *CountryError) Error() string {
+	return fmt.Sprintf("%v: %s", e.Err, e.CountryCode)
+}
 
-func processRequest(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "failed to read request body", http.StatusBadRequest)
-		return
+func (e *CountryError) Unwrap() error {
+	return e.Err
+}
+
+func NewCountryNotFoundError(code string) error {
+	return &CountryError{
+		Err:         ErrCountryNotFound,
+		CountryCode: code,
 	}
-	w.Write(body)
 }
 
-func main() {
-	r := chi.NewRouter()
-	r.Post("/process", processRequest)
-	http.ListenAndServe(":8080", r)
+// Helper to safely extract context
+func GetCountryCode(err error) (string, bool) {
+	var countryErr *CountryError
+	if errors.As(err, &countryErr) {
+		return countryErr.CountryCode, true
+	}
+	return "", false
 }
 ```
 
-### Bad Example
+### Bad Example:
 ```go
-package main
+package domain
 
-import (
-	"io"
-	"net/http"
-
-	"github.com/go-chi/chi/v5"
-)
-
-func processRequest(w http.ResponseWriter, r *http.Request) {
-	body, _ := io.ReadAll(r.Body) // Bad: Ignoring error with blank identifier
-	w.Write(body)                 // May crash if body is nil
-}
-
-func main() {
-	r := chi.NewRouter()
-	r.Post("/process", processRequest)
-	http.ListenAndServe(":8080", r)
+// Bad: Just formatting error message without proper wrapping
+func NewCountryNotFoundError(code string) error {
+	return fmt.Errorf("country not found: %s", code)
 }
 ```
 
-## Rule 3: Wrap Errors for Context
-Description: Use fmt.Errorf with %w to wrap errors, adding context for debugging. In Chi, this helps log detailed errors while sending user-friendly responses.
+## Rule 3: Place Domain Errors in Domain Package
+Description: Keep business-related errors in the domain package. Infrastructure or implementation-specific errors should be wrapped with domain errors if they need to cross the boundary.
 
 ### Good Example:
 ```go
-package main
+// domain/errors.go
+package domain
 
-import (
-	"fmt"
-	"net/http"
-
-	"github.com/go-chi/chi/v5"
+var (
+	ErrCountryNotFound = errors.New("country not found")
 )
 
-func queryDB(id string) (string, error) {
-	if id == "0" {
-		return "", fmt.Errorf("invalid ID: %s", id)
-	}
-	return "data", nil
-}
+// infrastructure/repository.go
+package infrastructure
 
-func getData(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	data, err := queryDB(id)
+func (r *Repository) GetCountry(code string) (*Country, error) {
+	data, err := r.db.Query(...)
 	if err != nil {
-		log.Printf("getData failed: %w", err) // Wrap for logging
-		http.Error(w, "invalid request", http.StatusBadRequest)
-		return
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.NewCountryNotFoundError(code)
+		}
+		return nil, fmt.Errorf("failed to query country: %w", err)
 	}
-	w.Write([]byte(data))
-}
-
-func main() {
-	r := chi.NewRouter()
-	r.Get("/data/{id}", getData)
-	http.ListenAndServe(":8080", r)
+	return data, nil
 }
 ```
 
-### Bad Example
+### Bad Example:
 ```go
-package main
+// Bad: Domain errors defined in infrastructure
+package infrastructure
 
-import (
-	"fmt"
-	"net/http"
+var ErrCountryNotFound = errors.New("country not found")
 
-	"github.com/go-chi/chi/v5"
-)
-
-func queryDB(id string) (string, error) {
-	if id == "0" {
-		return "", fmt.Errorf("invalid ID") // No specific context
-	}
-	return "data", nil
-}
-
-func getData(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	data, err := queryDB(id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest) // Bad: No wrapping, vague error
-		return
-	}
-	w.Write([]byte(data))
-}
-
-func main() {
-	r := chi.NewRouter()
-	r.Get("/data/{id}", getData)
-	http.ListenAndServe(":8080", r)
+func (r *Repository) GetCountry(code string) (*Country, error) {
+	return nil, ErrCountryNotFound
 }
 ```
 
-## Rule 4: Use Defer for Resource Cleanup
-Description: Use defer to ensure resources (e.g., files, connections) are closed, even if an error occurs. In Chi, this maintains stability in handlers.
+## Rule 4: Handle Errors Appropriately in HTTP Handlers
+Description: HTTP handlers should map domain errors to appropriate HTTP responses while maintaining detailed logging. Use structured logging with error context.
 
 ### Good Example:
 ```go
-package main
-
-import (
-	"net/http"
-	"os"
-
-	"github.com/go-chi/chi/v5"
-)
-
-func readFile(w http.ResponseWriter, r *http.Request) {
-	file, err := os.Open("data.txt")
-	if err != nil {
-		http.Error(w, "failed to open file", http.StatusInternalServerError)
-		return
-	}
-	defer file.Close() // Ensures cleanup
-	w.Write([]byte("file opened"))
-}
-
-func main() {
-	r := chi.NewRouter()
-	r.Get("/file", readFile)
-	http.ListenAndServe(":8080", r)
-}
-```
-### Bad Example
-```go
-package main
-
-import (
-	"net/http"
-	"os"
-
-	"github.com/go-chi/chi/v5"
-)
-
-func readFile(w http.ResponseWriter, r *http.Request) {
-	file, err := os.Open("data.txt")
-	if err != nil {
-		http.Error(w, "failed to open file", http.StatusInternalServerError)
-		return
-	}
-	// Bad: No defer, file remains open
-	w.Write([]byte("file opened"))
-}
-
-func main() {
-	r := chi.NewRouter()
-	r.Get("/file", readFile)
-	http.ListenAndServe(":8080", r)
-}
-```
-
-## Rule 5: Use Custom Error Types for Web
-Description: Define custom error types with HTTP status codes and messages for specific handling in Chi, improving user feedback and logging.
-
-### Good Example:
-```go
-package main
-
-import (
-	"fmt"
-	"net/http"
-
-	"github.com/go-chi/chi/v5"
-)
-
-type appError struct {
-	Message string
-	Status  int
-}
-
-func (e *appError) Error() string {
-	return e.Message
-}
-
-func fetchResource(id string) (string, error) {
-	if id == "" {
-		return "", &appError{"missing resource ID", http.StatusBadRequest}
-	}
-	return "resource", nil
-}
-
-func getResource(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	data, err := fetchResource(id)
-	if err != nil {
-		if appErr, ok := err.(*appError); ok {
-			http.Error(w, appErr.Message, appErr.Status)
+func HandleGetCountry(countryRepo domain.CountryRepository, log logger.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		country, err := countryRepo.GetCountry(r.Context(), "US")
+		if err != nil {
+			if domain.IsCountryNotFoundError(err) {
+				if code, ok := domain.GetCountryCode(err); ok {
+					log.Error("country", err, "country not found", 
+						"country_code", code)
+				}
+				renderErrorPage(w, r, http.StatusNotFound, 
+					"Country not found")
+				return
+			}
+			log.Error("country", err, "failed to get country")
+			renderErrorPage(w, r, http.StatusInternalServerError, 
+				"Internal server error")
 			return
 		}
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+		renderCountry(w, r, country)
 	}
-	w.Write([]byte(data))
-}
-
-func main() {
-	r := chi.NewRouter()
-	r.Get("/resource/{id}", getResource)
-	http.ListenAndServe(":8080", r)
 }
 ```
 
-### Bad Example
+### Bad Example:
 ```go
-package main
-
-import (
-	"fmt"
-	"net/http"
-
-	"github.com/go-chi/chi/v5"
-)
-
-func fetchResource(id string) (string, error) {
-	if id == "" {
-		return "", fmt.Errorf("missing ID") // Bad: No status or structure
+func HandleGetCountry(repo domain.CountryRepository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		country, err := repo.GetCountry(r.Context(), "US")
+		if err != nil {
+			// Bad: Direct error exposure and no logging
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		renderCountry(w, r, country)
 	}
-	return "resource", nil
-}
-
-func getResource(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	data, err := fetchResource(id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError) // All errors as 500
-		return
-	}
-	w.Write([]byte(data))
-}
-
-func main() {
-	r := chi.NewRouter()
-	r.Get("/resource/{id}", getResource)
-	http.ListenAndServe(":8080", r)
 }
 ```
 
-## Rule 6: Log Errors Appropriately
-Description: Log detailed errors internally for debugging, while sending generic messages to users to avoid exposing sensitive data in Chi.
+## Rule 5: Handle Page Rendering Errors Gracefully
+Description: When rendering pages (as opposed to API endpoints), errors should result in rendering error pages rather than returning HTTP error responses. This provides a better user experience in web applications.
 
 ### Good Example:
 ```go
-package main
-
-import (
-	"fmt"
-	"log"
-	"net/http"
-
-	"github.com/go-chi/chi/v5"
-)
-
-func processData(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+func displayUserProfile(w http.ResponseWriter, r *http.Request, logger Logger) {
+	userID := chi.URLParam(r, "id")
+	user, err := userRepo.GetUser(r.Context(), userID)
 	if err != nil {
-		log.Printf("processData failed: %w", err) // Log detailed error
-		http.Error(w, "invalid request", http.StatusBadRequest) // Generic user message
+		logger.Error("user_profile", err, "failed to fetch user profile", 
+			"user_id", userID)
+		renderErrorPage(w, r, http.StatusInternalServerError, 
+			"We're sorry, but we couldn't load this profile right now")
 		return
 	}
-	w.Write(body)
-}
-
-func main() {
-	r := chi.NewRouter()
-	r.Post("/data", processData)
-	http.ListenAndServe(":8080", r)
+	
+	templ.Handler(views.UserProfile(user)).ServeHTTP(w, r)
 }
 ```
 
-### Bad Example
+### Bad Example:
 ```go
-package main
-
-import (
-	"io"
-	"net/http"
-
-	"github.com/go-chi/chi/v5"
-)
-
-func processData(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+func displayUserProfile(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "id")
+	user, err := userRepo.GetUser(r.Context(), userID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest) // Bad: Exposes raw error to user
+		// Bad: Returns raw HTTP error for page view
+		http.Error(w, "Failed to load user", http.StatusInternalServerError)
 		return
 	}
-	w.Write(body)
-}
-
-func main() {
-	r := chi.NewRouter()
-	r.Post("/data", processData)
-	http.ListenAndServe(":8080", r)
-}
-```
-
-## Rule 7: Avoid Panics for Expected Errors
-Description: Return errors instead of panicking for expected issues (e.g., invalid input). In Chi, use http.Error for control flow instead of panics.
-
-### Good Example:
-```go
-package main
-
-import (
-	"net/http"
-
-	"github.com/go-chi/chi/v5"
-)
-
-func validateInput(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		http.Error(w, "missing ID", http.StatusBadRequest)
-		return
-	}
-	w.Write([]byte("valid input"))
-}
-
-func main() {
-	r := chi.NewRouter()
-	r.Get("/validate/{id}", validateInput)
-	http.ListenAndServe(":8080", r)
-}
-```
-
-### Bad Example
-```go
-package main
-
-import (
-	"net/http"
-
-	"github.com/go-chi/chi/v5"
-)
-
-func validateInput(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		panic("missing ID") // Bad: Panic for expected error
-	}
-	w.Write([]byte("valid input"))
-}
-
-func main() {
-	r := chi.NewRouter()
-	r.Get("/validate/{id}", validateInput)
-	http.ListenAndServe(":8080", r)
+	
+	templ.Handler(views.UserProfile(user)).ServeHTTP(w, r)
 }
 ```
