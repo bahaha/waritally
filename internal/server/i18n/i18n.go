@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"waritally/internal/infra/config"
+	"waritally/internal/infra"
 	"waritally/internal/server/logger"
 
 	"github.com/BurntSushi/toml"
@@ -13,14 +13,14 @@ import (
 )
 
 var (
-	bundle      *goi18n.Bundle
-	log         logger.Logger
-	cfg         *config.AppConfig
-	localizers  sync.Map
+	bundle     *goi18n.Bundle
+	log        logger.Logger
+	cfg        *infra.AppConfig
+	localizers sync.Map
 )
 
 // Initialize initializes the i18n package with a logger and config
-func Initialize(l logger.Logger, config *config.AppConfig) {
+func Initialize(l logger.Logger, config *infra.AppConfig) {
 	log = l.With("component", "i18n")
 	cfg = config
 
@@ -39,11 +39,11 @@ func Initialize(l logger.Logger, config *config.AppConfig) {
 
 	// Load translation files
 	loadedLanguages := make([]string, 0)
-	
+
 	for _, lang := range cfg.I18n.SupportedLangs {
 		if err := loadTranslationFile(lang); err != nil {
-			log.Error("i18n", err, "Failed to load translations", 
-				"language", lang, 
+			log.Error("i18n", err, "Failed to load translations",
+				"language", lang,
 				"locales_path", cfg.I18n.LocalesPath)
 		} else {
 			loadedLanguages = append(loadedLanguages, lang)

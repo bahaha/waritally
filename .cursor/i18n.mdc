@@ -11,22 +11,22 @@ Description: Initialize a single i18n.Bundle at the start of your application an
 package main
 
 import (
-    "encoding/json"
-    "github.com/nicksnyder/go-i18n/v2/i18n"
-    "golang.org/x/text/language"
+	"github.com/BurntSushi/toml"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
+	"golang.org/x/text/language"
 )
 
 var bundle *i18n.Bundle
 
 func init() {
-    bundle = i18n.NewBundle(language.English)
-    bundle.RegisterUnmarshalFunc("json", json.Unmarshal)
-    bundle.MustLoadMessageFile("locales/en.json")
-    bundle.MustLoadMessageFile("locales/es.json")
+	bundle = i18n.NewBundle(language.English)
+	bundle.RegisterUnmarshalFunc("toml", toml.Unmarshal)
+	bundle.MustLoadMessageFile("locales/en.toml")
+	bundle.MustLoadMessageFile("locales/es.toml")
 }
 
 func main() {
-    // Bundle is now accessible throughout the application
+	// Bundle is now accessible throughout the application
 }
 ```
 
@@ -35,22 +35,22 @@ func main() {
 package main
 
 import (
-    "encoding/json"
-    "github.com/nicksnyder/go-i18n/v2/i18n"
-    "golang.org/x/text/language"
+	"github.com/BurntSushi/toml"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
+	"golang.org/x/text/language"
 )
 
 func main() {
-    bundle := i18n.NewBundle(language.English)
-    bundle.RegisterUnmarshalFunc("json", json.Unmarshal)
-    bundle.MustLoadMessageFile("locales/en.json")
-    bundle.MustLoadMessageFile("locales/es.json")
-    // Bundle is only accessible within main, limiting its use in larger applications
+	bundle := i18n.NewBundle(language.English)
+	bundle.RegisterUnmarshalFunc("toml", toml.Unmarshal)
+	bundle.MustLoadMessageFile("locales/en.toml")
+	bundle.MustLoadMessageFile("locales/es.toml")
+	// Bundle is only accessible within main, limiting its use in larger applications
 }
 ```
 
 ## Rule 2: Create Localizers Per Request
-Description: For web applications, create a new i18n.Localizer for each request based on the user's locale preference. This ensures that each request gets the correct translations tailored to the user’s language.
+Description: For web applications, create a new i18n.Localizer for each request based on the user's locale preference. This ensures that each request gets the correct translations tailored to the user's language.
 
 ## Good Example:
 ```go
@@ -74,7 +74,7 @@ func init() {
 
 func greetHandler(w http.ResponseWriter, r *http.Request) {
     // Using a global localizer ignores the user's locale preference
-    msg, _ := localizer.Localize(&i18n.LocalizeConfig{MessageID: "greeting"})
+    msg, _ := localizer.Localize(&i18n.LocalizeConfig{MessageID: "user.greeting"})
     fmt.Fprintf(w, msg)
 }
 ```
@@ -85,7 +85,7 @@ Description: Always reference translations by their message IDs instead of hardc
 ## Good Example:
 ```go
 msg, err := localizer.Localize(&i18n.LocalizeConfig{
-    MessageID: "greeting",
+    MessageID: "user.greeting",
     TemplateData: map[string]interface{}{
         "Name": name,
     },
@@ -127,83 +127,96 @@ func getLocale(r *http.Request) string {
     // Only checks query param with no fallback
     return r.URL.Query().Get("lang")
 }
-// Fails if lang isn’t provided, leading to potential errors
+// Fails if lang isn't provided, leading to potential errors
 ```
 
 ## Rule 5: Structure Translation Files Consistently
-Description: Store translation files in a dedicated directory (e.g., locales) with consistent naming (e.g., en.json, es.json). Use unique message IDs for each translation.
+Description: Store translation files in a dedicated directory (e.g., locales) with consistent naming (e.g., en.toml, es.toml). Use TOML format and organize translations by categories while maintaining full key paths for better searchability and maintenance.
 
 ## Good Example:
+```toml
+locales/
+├── en.toml
+│   [trip]
+│   "trip.create.title" = "Create New Trip"
+│   "trip.form.name" = "Name"
+│   "trip.form.name.placeholder" = "Your name"
+│
+│   [country]
+│   "country.taiwan" = "Taiwan"
+│   "country.taiwan.area.taipei" = "Taipei"
+│   "country.taiwan.area.tainan" = "Tainan"
+│
+└── es.toml
+    [trip]
+    "trip.create.title" = "Crear Nuevo Viaje"
+    "trip.form.name" = "Nombre"
+    "trip.form.name.placeholder" = "Tu nombre"
+
+    [country]
+    "country.taiwan" = "Taiwán"
+    "country.taiwan.area.taipei" = "Taipéi"
+    "country.taiwan.area.tainan" = "Tainán"
+```
+
+Benefits of this structure:
+1. Category-based organization using TOML tables
+2. Full key paths preserved for easy text searching
+3. Clear visual grouping of related translations
+4. Aligns with go-i18n documentation recommendations
+
+## Bad Example:
 ```text
 locales/
-├── en.json
+├── en.json // Using JSON instead of TOML
 │   {
-│     "greeting": {
-│       "id": "greeting",
-│       "translation": "Hello, {{.Name}}!"
+│     "trip": {
+│       "trip.create.title": "Create New Trip"
+│     },
+│     "country": {
+│       "country.taiwan": "Taiwan"
 │     }
 │   }
 └── es.json
-    {
-      "greeting": {
-        "id": "greeting",
-        "translation": "¡Hola, {{.Name}}!"
-      }
-    }
-```
-
-## Bad Example:
-```text
-translations/
-├── english.txt
-│   Hello, {{.Name}}!
-└── spanish.txt
-    ¡Hola, {{.Name}}!
-// Unstructured files without message IDs are harder to manage
+    // Unorganized translations or incorrect format
 ```
 
 ## Rule 6: Use Placeholders for Dynamic Data
-Description: Use text/template syntax placeholders (e.g., {{.Name}}) in translation strings for dynamic data, leveraging Go’s native templating for flexibility.
+Description: Use text/template syntax placeholders (e.g., {{.Name}}) in translation strings for dynamic data, leveraging Go's native templating for flexibility.
 
 ## Good Example:
-```json
-{
-  "greeting": {
-    "id": "greeting",
-    "translation": "Hello, {{.Name}}!"
-  }
-}
+```toml
+[user]
+"user.greeting" = "Hello, {{.Name}}!"
+"user.farewell" = "Goodbye, {{.Name}}!"
+"user.welcome.message" = "Welcome to {{.AppName}}, {{.Name}}!"
 ```
 
 ## Bad Example:
-```json
-{
-  "greeting": {
-    "id": "greeting",
-    "translation": "Hello, %s!" // printf-style is less flexible and less idiomatic in Go
-  }
-}
+```toml
+[user]
+"user.greeting" = "Hello, %s!"  # printf-style is less flexible
+"user.welcome" = "Welcome to %s, %s!"  # order-dependent parameters are error-prone
 ```
 
 ## Rule 7: Handle Pluralization When Necessary
-Description: Use the i18n library’s pluralization features for messages involving counts, ensuring correct forms for different languages and quantities.
+Description: Use the i18n library's pluralization features for messages involving counts, ensuring correct forms for different languages and quantities. Use TOML tables for plural forms.
 
 ## Good Example:
-```json
-{
-  "apples": {
-    "id": "apples",
-    "translation": {
-      "one": "I have {{.Count}} apple.",
-      "other": "I have {{.Count}} apples."
-    }
-  }
-}
+```toml
+[inventory]
+[inventory."inventory.items.count"]
+one = "I have {{.Count}} item"
+other = "I have {{.Count}} items"
+
+[inventory."inventory.apples.count"]
+one = "I have {{.Count}} apple"
+other = "I have {{.Count}} apples"
 ```
 
 ```go
 msg, err := localizer.Localize(&i18n.LocalizeConfig{
-    MessageID:   "apples",
+    MessageID:   "inventory.apples.count",
     PluralCount: count,
     TemplateData: map[string]interface{}{
         "Count": count,
@@ -212,13 +225,11 @@ msg, err := localizer.Localize(&i18n.LocalizeConfig{
 ```
 
 ## Bad Example:
-```go
-if count == 1 {
-    msg = "I have 1 apple."
-} else {
-    msg = fmt.Sprintf("I have %d apples.", count)
-}
-// Manual plural handling is error-prone and doesn’t support complex plural rules
+```toml
+[inventory]
+"inventory.items" = "I have {{.Count}} item(s)" # Incorrect plural handling
+"inventory.apples.one" = "I have 1 apple"       # Separating plurals manually
+"inventory.apples.other" = "I have {{.Count}} apples"
 ```
 
 ## Rule 8: Test Translations Regularly
@@ -229,7 +240,7 @@ Description: Write tests to verify that translations load correctly and return t
 func TestGreeting(t *testing.T) {
     localizer := i18n.NewLocalizer(bundle, "en")
     msg, err := localizer.Localize(&i18n.LocalizeConfig{
-        MessageID: "greeting",
+        MessageID: "user.greeting",
         TemplateData: map[string]interface{}{
             "Name": "Alice",
         },
@@ -237,10 +248,4 @@ func TestGreeting(t *testing.T) {
     assert.NoError(t, err)
     assert.Equal(t, "Hello, Alice!", msg)
 }
-```
-
-## Bad Example:
-```go
-// No tests, assuming translations work
-// Risks undetected bugs as the application scales
 ```
