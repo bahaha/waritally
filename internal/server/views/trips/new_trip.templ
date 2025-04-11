@@ -13,7 +13,7 @@ templ NewTrip(props *props.NewTripProps) {
 	{{ NameContext := &form.FormItemContext{ID: "ABC"} }}
 	{{ CountryContext := &form.FormItemContext{ID: "DEF"} }}
 	{{ LocationContext := &form.FormItemContext{ID: "GHI"} }}
-	{{ t := middleware.GetTranslateFunc(ctx) }}
+	{{ t := middleware.GetSimpleTranslateFunc(ctx) }}
 	@layout.BaseLayout(t("trip.create.title")) {
 		<h1 class="text-3xl font-bold text-primary mb-6">{ t("trip.create.title") }</h1>
 		<form class="space-y-3">
@@ -52,10 +52,11 @@ templ NewTrip(props *props.NewTripProps) {
 					hx-trigger="change"
 					hx-get="/api/locations"
 					hx-target="#location-tags"
+					hx-include="#lang"
 				>
 					<option value="">{ t("trip.form.country.select") }</option>
 					for _, country := range props.Countries {
-						<option value={ country.Code }>{ country.Name }</option>
+						<option value={ country.Code }>{ t(country.Name) }</option>
 					}
 				</select>
 			}

@@ -26,15 +26,15 @@ func ThailandDefinition() CountryDefinition {
 	return CountryDefinition{
 		Country: domain.Country{
 			Code:     Thailand.Code,
-			Name:     "Thailand",
+			Name:     "country.thailand",
 			Currency: Thailand.Currency,
 		},
 		Areas: []domain.Area{
-			{Name: "Bangkok", Code: Thailand.Area.Bangkok},
-			{Name: "Chiang Mai", Code: Thailand.Area.ChiangMai},
-			{Name: "Phuket", Code: Thailand.Area.Phuket},
-			{Name: "Pattaya", Code: Thailand.Area.Pattaya},
-			{Name: "Krabi", Code: Thailand.Area.Krabi},
+			{Name: "country.thailand.area.bangkok", Code: Thailand.Area.Bangkok},
+			{Name: "country.thailand.area.chiangmai", Code: Thailand.Area.ChiangMai},
+			{Name: "country.thailand.area.phuket", Code: Thailand.Area.Phuket},
+			{Name: "country.thailand.area.pattaya", Code: Thailand.Area.Pattaya},
+			{Name: "country.thailand.area.krabi", Code: Thailand.Area.Krabi},
 		},
 	}
 }

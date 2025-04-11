@@ -26,15 +26,15 @@ func VietnamDefinition() CountryDefinition {
 	return CountryDefinition{
 		Country: domain.Country{
 			Code:     Vietnam.Code,
-			Name:     "Vietnam",
+			Name:     "country.vietnam",
 			Currency: Vietnam.Currency,
 		},
 		Areas: []domain.Area{
-			{Name: "Hanoi", Code: Vietnam.Area.Hanoi},
-			{Name: "Ho Chi Minh City", Code: Vietnam.Area.HoChiMinh},
-			{Name: "Da Nang", Code: Vietnam.Area.DaNang},
-			{Name: "Hue", Code: Vietnam.Area.Hue},
-			{Name: "Nha Trang", Code: Vietnam.Area.NhaTrang},
+			{Name: "country.vietnam.area.hanoi", Code: Vietnam.Area.Hanoi},
+			{Name: "country.vietnam.area.hcmc", Code: Vietnam.Area.HoChiMinh},
+			{Name: "country.vietnam.area.danang", Code: Vietnam.Area.DaNang},
+			{Name: "country.vietnam.area.hue", Code: Vietnam.Area.Hue},
+			{Name: "country.vietnam.area.nhatrang", Code: Vietnam.Area.NhaTrang},
 		},
 	}
 }

@@ -51,7 +51,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	// API routes - to be expanded later
 	r.Route("/api", func(r chi.Router) {
 		r.With(httpin.NewInput(handlers.GetCountryAreasRequest{})).
-			Get("/locations", handlers.HandleGetCountryAreas(s.logger, s.countryRepo))
+			Get("/locations", (handlers.HandleGetCountryAreas(s.logger, s.countryRepo)))
 	})
 
 	return r

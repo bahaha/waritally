@@ -1,12 +1,12 @@
 package i18n
 
 import (
-	"encoding/json"
 	"fmt"
 	"sync"
 
 	"waritally/internal/server/logger"
 
+	"github.com/BurntSushi/toml"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"golang.org/x/text/language"
 )
@@ -25,7 +25,7 @@ func Initialize(l logger.Logger) {
 
 	// Create bundle with English as fallback
 	bundle = i18n.NewBundle(language.English)
-	bundle.RegisterUnmarshalFunc("json", json.Unmarshal)
+	bundle.RegisterUnmarshalFunc("toml", toml.Unmarshal)
 
 	// Load translation files
 	loadedLanguages := make([]string, 0)
@@ -43,7 +43,7 @@ func Initialize(l logger.Logger) {
 }
 
 func loadTranslationFile(lang string) error {
-	filename := fmt.Sprintf("%s/%s.json", localesPath, lang)
+	filename := fmt.Sprintf("%s/%s.toml", localesPath, lang)
 	file, err := bundle.LoadMessageFile(filename)
 	if err != nil {
 		return fmt.Errorf("failed to load translation file %s: %w", filename, err)
@@ -88,9 +88,15 @@ func GetTranslation(lang, messageID string, templateData map[string]interface{})
 		},
 	})
 	if err != nil {
+		// Try to localize without template data to see if the message exists
+		basicMsg, basicErr := localizer.Localize(&i18n.LocalizeConfig{
+			MessageID: messageID,
+		})
 		log.Error("i18n", err, "Translation failed",
 			"language", lang,
-			"message_id", messageID)
+			"message_id", messageID,
+			"basic_translation_error", basicErr,
+			"basic_translation_result", basicMsg)
 		return messageID
 	}
 

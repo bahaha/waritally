@@ -15,18 +15,28 @@ var log logger.Logger
 type contextKey string
 
 const (
-	LangKey      contextKey = "lang"
-	TranslateKey contextKey = "translate_fn"
+	LangKey            contextKey = "lang"
+	simpleTranslateKey contextKey = "simple_translate_fn"
+	translateKey       contextKey = "translate_fn"
 )
 
-type TranslateFn func(key string) string
+type SimpleTranslateFn func(key string) string
+type TranslateFn func(key string, payload map[string]interface{}) string
 
-func GetTranslateFunc(ctx context.Context) TranslateFn {
-	if fn, ok := ctx.Value(TranslateKey).(TranslateFn); ok {
+func GetSimpleTranslateFunc(ctx context.Context) SimpleTranslateFn {
+	if fn, ok := ctx.Value(simpleTranslateKey).(SimpleTranslateFn); ok {
 		return fn
 	}
 
 	return func(key string) string { return key }
+}
+
+func GetTranslateFunc(ctx context.Context) TranslateFn {
+	if fn, ok := ctx.Value(translateKey).(TranslateFn); ok {
+		return fn
+	}
+
+	return func(key string, payload map[string]interface{}) string { return key }
 }
 
 func InitMiddleware(l logger.Logger) {
@@ -54,11 +64,15 @@ func I18nMiddleware(next http.Handler) http.Handler {
 				"source", getLanguageSource(r))
 		}
 
-		t := TranslateFn(func(key string) string {
+		simpleT := SimpleTranslateFn(func(key string) string {
 			return i18n.GetTranslation(primaryLang, key, nil)
 		})
+		t := TranslateFn(func(key string, payload map[string]interface{}) string {
+			return i18n.GetTranslation(primaryLang, key, payload)
+		})
 
-		ctx := context.WithValue(r.Context(), TranslateKey, t)
+		ctx := context.WithValue(r.Context(), translateKey, t)
+		ctx = context.WithValue(ctx, simpleTranslateKey, simpleT)
 		ctx = context.WithValue(ctx, LangKey, primaryLang)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
