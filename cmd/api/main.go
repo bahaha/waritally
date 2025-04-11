@@ -8,9 +8,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	country "waritally/internal/country/infrastructure"
+	"waritally/internal/infra/config"
 	"waritally/internal/server"
 	"waritally/internal/server/logger"
 
@@ -44,7 +44,7 @@ func run(
 
 	processLog.Info("main", "Starting Waritally application")
 
-	cfg, err := server.LoadConfig(getenv)
+	cfg, err := config.LoadConfig(getenv)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
@@ -74,7 +74,7 @@ func run(
 		processLog.Info("server", "shutting down server gracefully, press <C-c> again to force")
 
 		// Create a timeout context for shutdown
-		shutdownCtx, stop := context.WithTimeout(context.Background(), 5*time.Second)
+		shutdownCtx, stop := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 		defer stop()
 
 		if err := srv.Shutdown(shutdownCtx); err != nil {
