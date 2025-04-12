@@ -1,0 +1,413 @@
+---
+description: Guidelines for creating UI components in the Waritally project
+globs: /pkg/components/ui/**/*.go
+alwaysApply: false
+---
+
+# UI Component Architecture Rules
+
+## Rule 1: Split Components into Types and Styles
+
+Description: UI components should be organized into separate files: `types.go` for component structure and logic, and `styles.go` for styling definitions. This separation allows for clean maintenance of component behavior and visual appearance.
+
+### Good Example:
+```go
+// button/types.go
+package button
+
+import (
+	"github.com/a-h/templ"
+	"waritally/pkg/components"
+)
+
+type buttonProps struct {
+	Class   string
+	Variant Variant
+	Size    Size
+}
+
+func ButtonProps() *buttonProps {
+	return &buttonProps{
+		Variant: Variants.Default,
+		Size:    Sizes.Medium,
+	}
+}
+
+func (p *buttonProps) WithClass(class string) *buttonProps {
+	p.Class = class
+	return p
+}
+
+func New(props *buttonProps) templ.Attributes {
+	attrs := templ.Attributes{}
+	attrs["class"] = components.Cn(
+		defaultButtonStyles.Base,
+		defaultButtonStyles.Variants[props.Variant],
+		defaultButtonStyles.Sizes[props.Size],
+		props.Class,
+	)
+	return attrs
+}
+
+// button/styles.go
+package button
+
+type ButtonVariants struct {
+	Base     string
+	Variants map[Variant]string
+	Sizes    map[Size]string
+}
+
+var defaultButtonStyles = ButtonVariants{
+	Base: "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ...",
+	Variants: map[Variant]string{
+		Variants.Default: "bg-primary text-primary-foreground hover:bg-primary/90",
+		// Other variants...
+	},
+	Sizes: map[Size]string{
+		Sizes.Small: "h-9 px-3 text-sm",
+		// Other sizes...
+	},
+}
+```
+
+### Bad Example:
+```go
+// button.go
+package button
+
+import (
+	"github.com/a-h/templ"
+)
+
+type ButtonProps struct {
+	Class   string
+	Variant string
+	Size    string
+}
+
+// Bad: Mixing styles and types in the same file
+var buttonStyles = map[string]string{
+	"default": "bg-primary text-primary-foreground",
+	"sm":      "h-9 px-3 text-sm",
+}
+
+func New(props ButtonProps) templ.Attributes {
+	// Implementation mixing style and logic
+}
+```
+
+## Rule 2: Use Builder Pattern for Component Properties
+
+Description: Components should implement a builder pattern for configuring properties. This allows for flexible, chainable configuration while providing meaningful defaults.
+
+### Good Example:
+```go
+package input
+
+type inputProps struct {
+	Class    string
+	HasError bool
+}
+
+func InputProps() *inputProps {
+	return &inputProps{}
+}
+
+func (p *inputProps) WithClass(class string) *inputProps {
+	p.Class = class
+	return p
+}
+
+func (p *inputProps) WithError(error bool) *inputProps {
+	p.HasError = error
+	return p
+}
+
+// Usage
+attrs := input.New(
+	input.InputProps().
+		WithClass("my-custom-class").
+		WithError(true),
+)
+```
+
+### Bad Example:
+```go
+package input
+
+func New(class string, hasError bool) templ.Attributes {
+	// Implementation without builder pattern
+}
+
+// Usage - Bad: Not as readable or flexible
+attrs := input.New("my-custom-class", true)
+```
+
+## Rule 3: Use Context for Form Component Communication
+
+Description: Form-related components should use Go's context package to share data between parent form components and child components. This allows for automatic connection of form items, labels, and inputs without explicitly passing all properties.
+
+### Good Example:
+```go
+package input
+
+import (
+	"context"
+	"waritally/pkg/components/ui/form"
+)
+
+type inputProps struct {
+	ctx   context.Context
+	ctxID string
+	// Other properties
+}
+
+func (p *inputProps) WithinContext(ctx context.Context, id string) *inputProps {
+	p.ctx = ctx
+	p.ctxID = id
+	return p
+}
+
+func New(props *inputProps) templ.Attributes {
+	attrs := templ.Attributes{}
+	
+	if props.ctx != nil && props.ctxID != "" {
+		formItem := form.GetFormItemContext(props.ctx, props.ctxID)
+		attrs["id"] = formItem.ID
+		attrs["name"] = formItem.Name
+		attrs["value"] = formItem.Value
+		// Get other values from context
+	}
+	
+	// Set other attributes
+	return attrs
+}
+```
+
+### Bad Example:
+```go
+package input
+
+// Bad: Requires explicit passing of all form-related properties
+func New(id string, name string, value interface{}, hasError bool) templ.Attributes {
+	attrs := templ.Attributes{}
+	attrs["id"] = id
+	attrs["name"] = name
+	// Set other attributes
+	return attrs
+}
+```
+
+## Rule 4: Structure Styles with Type Variants
+
+Description: Define component styles using structured types with variants, ensuring consistent styling options across the application. Use maps to organize variant and size styles.
+
+### Good Example:
+```go
+package label
+
+type Variant string
+type Size string
+
+type buttonVariants struct {
+	Default     Variant
+	Secondary   Variant
+	Destructive Variant
+}
+
+var Variants = buttonVariants{
+	Default:     "default",
+	Secondary:   "secondary",
+	Destructive: "destructive",
+}
+
+type stylesVariant struct {
+	Base     string
+	Variants map[Variant]string
+	Sizes    map[Size]string
+}
+
+var defaultStyles = stylesVariant{
+	Base: "base-styles-here",
+	Variants: map[Variant]string{
+		Variants.Default:     "variant-styles-here",
+		Variants.Secondary:   "secondary-styles-here",
+		Variants.Destructive: "destructive-styles-here",
+	},
+}
+```
+
+### Bad Example:
+```go
+package label
+
+// Bad: Using string constants directly without type safety
+const (
+	DefaultStyle    = "base-styles-here"
+	SecondaryStyle  = "secondary-styles-here"
+	DestructiveStyle = "destructive-styles-here"
+)
+
+// Bad: Not using maps for organized variants
+func getStyleForType(variant string) string {
+	switch variant {
+	case "default":
+		return DefaultStyle
+	case "secondary":
+		return SecondaryStyle
+	default:
+		return DefaultStyle
+	}
+}
+```
+
+## Rule 5: Use Templ for Complex Component Rendering
+
+Description: For components with complex rendering logic or that require composition, use templ templates alongside Go code. Keep the templ files focused on structure while the Go files handle the logic.
+
+### Good Example:
+```go
+// number-input/types.go
+package numberinput
+
+import (
+	"context"
+	"github.com/a-h/templ"
+)
+
+type numberInputProps struct {
+	min     int
+	max     int
+	presets []presetOption
+}
+
+func NumberInputProps() *numberInputProps {
+	return &numberInputProps{
+		min: 1,
+	}
+}
+
+func (p *numberInputProps) WithRange(min int, max int) *numberInputProps {
+	p.min = min
+	p.max = max
+	return p
+}
+
+// number-input/number-input.templ
+templ Root(props *numberInputProps) {
+	<div x-data={ NewState(props) }>
+		{ children... }
+	</div>
+}
+
+templ Input() {
+	<div class="flex items-center gap-4 bg-background rounded-lg">
+		<button type="button" class="p-4" @click="value = Math.max(min, value - 1)">-</button>
+		{ children... }
+		<button type="button" class="p-4" @click="value = Math.min(max, value + 1)">+</button>
+	</div>
+}
+```
+
+### Bad Example:
+```go
+// Bad: Generating HTML directly in Go code
+package numberinput
+
+func RenderHTML(min int, max int) string {
+	html := "<div class='flex items-center gap-4'>"
+	html += "<button class='p-4' onclick='decrementValue()'>-</button>"
+	html += "<input type='number' min='" + fmt.Sprint(min) + "' max='" + fmt.Sprint(max) + "'>"
+	html += "<button class='p-4' onclick='incrementValue()'>+</button>"
+	html += "</div>"
+	return html
+}
+```
+
+## Rule 6: Use the Cn Utility for CSS Class Management
+
+Description: Always use the Cn utility function to merge and manage CSS classes. This ensures proper handling of duplicates and conditional classes, and provides a unified approach to styling.
+
+### Good Example:
+```go
+package input
+
+import "waritally/pkg/components"
+
+func New(props *inputProps) templ.Attributes {
+	attrs := templ.Attributes{}
+	
+	attrs["class"] = components.Cn(
+		defaultInputStyles.Base,
+		components.AppendClass(defaultInputStyles.HasError, props.HasError),
+		props.Class,
+	)
+	
+	return attrs
+}
+```
+
+### Bad Example:
+```go
+package input
+
+// Bad: String concatenation for classes
+func New(props *inputProps) templ.Attributes {
+	attrs := templ.Attributes{}
+	
+	class := defaultInputStyles.Base
+	if props.HasError {
+		class += " " + defaultInputStyles.HasError
+	}
+	if props.Class != "" {
+		class += " " + props.Class
+	}
+	
+	attrs["class"] = class
+	return attrs
+}
+```
+
+## Rule 7: Component Directory Structure
+
+Description: Each UI component should have its own directory with the component's name. Standard components should follow the `types.go` and `styles.go` pattern, while more complex components may include templ files.
+
+### Good Example:
+```
+/pkg/components/ui/
+  /button/
+    types.go
+    styles.go
+  /input/
+    types.go
+    styles.go
+  /number-input/
+    types.go
+    number-input.templ
+    number-input_templ.go
+  /form/
+    types.go
+    styles.go
+    form-item.templ
+    form-item_templ.go
+```
+
+### Bad Example:
+```
+/pkg/components/ui/
+  button.go
+  input.go
+  number-input.go
+  form.go
+```
+
+OR
+
+```
+/pkg/components/ui/
+  /button/
+    button.go  # Bad: Mixing types and styles in one file
+  /input/
+    input.go
+```

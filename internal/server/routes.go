@@ -14,6 +14,7 @@ import (
 	"waritally/internal/server/handlers"
 	mw "waritally/internal/server/middleware"
 	"waritally/internal/server/views/misc"
+	"waritally/internal/server/views/misc/ui"
 )
 
 // RegisterRoutes sets up all the routes for our application
@@ -41,6 +42,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 	r.Route("/dev", func(r chi.Router) {
 		r.Get("/theme", s.showThemeGallery())
+
+		r.Route("/ui", func(r chi.Router) {
+			r.Get("/badge", s.showBadgeComponent())
+		})
 	})
 
 	r.Route("/trips", func(r chi.Router) {
@@ -85,5 +90,42 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 func (s *Server) showThemeGallery() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		templ.Handler(misc.ThemeGallery()).ServeHTTP(w, r)
+	}
+}
+
+// showBadgeComponent handles the badge component documentation
+func (s *Server) showBadgeComponent() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		examples := ui.BadgeCodeExamples{
+			ImportCode: `import "waritally/pkg/components/ui/badge"`,
+			UsageCode: `// Default variant
+<span { badge.New(badge.BadgeProps())... }>Default Badge</span>
+
+// Secondary variant
+<span { badge.New(badge.BadgeProps().WithVariant(badge.Variants.Secondary))... }>Secondary Badge</span>
+
+// Destructive variant
+<span { badge.New(badge.BadgeProps().WithVariant(badge.Variants.Destructive))... }>Destructive</span>
+
+// Outline variant
+<span { badge.New(badge.BadgeProps().WithVariant(badge.Variants.Outline))... }>Outline</span>`,
+			CustomCode: `// With custom class
+<span { badge.New(badge.BadgeProps().WithClass("font-bold"))... }>Bold Badge</span>
+
+// Combined customizations
+<span { badge.New(badge.BadgeProps().
+			WithVariant(badge.Variants.Secondary).
+			WithClass("italic"))... }>Italic Badge</span>
+
+// Custom padding
+<span { badge.New(badge.BadgeProps()
+			.WithClass("px-4 py-1"))... }>Wider Badge</span>
+
+// Custom colors
+<span { badge.New(badge.BadgeProps().
+			WithClass("bg-amber-400 text-amber-900 hover:bg-amber-500 border-transparent")),
+			... }>Custom Colors</span>`,
+		}
+		templ.Handler(ui.BadgeDocs(examples)).ServeHTTP(w, r)
 	}
 }

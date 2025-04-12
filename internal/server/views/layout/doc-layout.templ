@@ -1,0 +1,59 @@
+package layout
+
+// DocLayout is a layout template for the UI documentation pages
+templ DocLayout(title string) {
+	<html>
+		<head>
+			<title>{ title } Component - Waritally UI</title>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<link rel="stylesheet" href="/assets/css/global.css"/>
+		</head>
+		<body>
+			<div class="flex min-h-screen">
+				<!-- Sidebar -->
+				<aside class="w-48 border-r border-border bg-card p-6 hidden md:block">
+					<h1 class="text-xl font-bold mb-6">UI Components</h1>
+					<nav class="space-y-1">
+						<a href="/dev/ui/badge" class="block px-3 py-2 rounded-md hover:bg-muted">Badge</a>
+						<a href="/dev/ui/button" class="block px-3 py-2 rounded-md hover:bg-muted">Button</a>
+						<a href="/dev/ui/input" class="block px-3 py-2 rounded-md hover:bg-muted">Input</a>
+						<a href="/dev/ui/label" class="block px-3 py-2 rounded-md hover:bg-muted">Label</a>
+						<a href="/dev/ui/number-input" class="block px-3 py-2 rounded-md hover:bg-muted">Number Input</a>
+						<!-- Add more component links as they are created -->
+					</nav>
+				</aside>
+				<!-- Main content -->
+				<main class="flex-1 p-6 md:p-10 max-w-5xl">
+					<h1 class="text-3xl font-bold mb-8">{ title } Component</h1>
+					{ children... }
+				</main>
+			</div>
+			<script type="module">
+				// Import shiki for syntax highlighting
+				import { codeToHtml } from 'https://esm.sh/shiki@3.0.0';
+				
+				// Apply syntax highlighting to all code blocks
+				async function highlightCodeBlocks() {
+					const codeBlocks = document.querySelectorAll('.code-block');
+					
+					for (const block of codeBlocks) {
+						const code = block.textContent;
+						const lang = block.getAttribute('data-lang') || 'templ';
+						const theme = block.getAttribute('data-theme') || 'github-dark';
+						
+						const html = await codeToHtml(code, {
+							lang: lang,
+							theme: theme
+						});
+						
+						block.innerHTML = html;
+					}
+				}
+				
+				// Run when page is loaded
+				window.addEventListener('DOMContentLoaded', highlightCodeBlocks);
+			</script>
+		</body>
+	</html>
+}
