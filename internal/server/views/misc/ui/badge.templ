@@ -1,0 +1,84 @@
+package ui
+
+import (
+	"waritally/internal/server/views/layout"
+	"waritally/pkg/components/ui/badge"
+)
+
+type BadgeCodeExamples struct {
+	ImportCode string
+	UsageCode  string
+	CustomCode string
+}
+
+templ BadgeDocs(examples BadgeCodeExamples) {
+	@layout.DocLayout("Badge") {
+		<div class="space-y-8">
+			<section id="overview" class="space-y-4">
+				<h2 class="text-2xl font-bold">Badge Component</h2>
+				<p>Badges are used to highlight an item's status for quick recognition.</p>
+			</section>
+			<section id="import" class="space-y-4">
+				<h2 class="text-xl font-semibold">Import</h2>
+				<div class="rounded-md">
+					<pre class="code-block" data-lang="go">{ examples.ImportCode }</pre>
+				</div>
+			</section>
+			<section id="usage" class="space-y-4">
+				<h2 class="text-xl font-semibold">Usage</h2>
+				<div class="flex flex-wrap items-center gap-4">
+					<span { badge.New(badge.BadgeProps())... }>Default Badge</span>
+					<span { badge.New(badge.BadgeProps().WithVariant(badge.Variants.Secondary))... }>Secondary Badge</span>
+					<span { badge.New(badge.BadgeProps().WithVariant(badge.Variants.Destructive))... }>Destructive</span>
+					<span { badge.New(badge.BadgeProps().WithVariant(badge.Variants.Outline))... }>Outline</span>
+				</div>
+				<div class="rounded-md mt-2">
+					<pre class="code-block" data-lang="templ">{ examples.UsageCode }</pre>
+				</div>
+			</section>
+			<section id="custom" class="space-y-4">
+				<h2 class="text-xl font-semibold">Custom Styling</h2>
+				<div class="flex flex-wrap items-center gap-4">
+					<span { badge.New(badge.BadgeProps().WithClass("font-bold"))... }>Bold Badge</span>
+					<span { badge.New(badge.BadgeProps().WithVariant(badge.Variants.Secondary).WithClass("italic"))... }>Italic Badge</span>
+					<span { badge.New(badge.BadgeProps().WithClass("px-4 py-1"))... }>Wider Badge</span>
+					<span { badge.New(badge.BadgeProps().WithClass("bg-amber-400 text-amber-900 hover:bg-amber-500 border-transparent"))... }>Custom Colors</span>
+				</div>
+				<div class="rounded-md mt-2">
+					<pre class="code-block" data-lang="templ">{ examples.CustomCode }</pre>
+				</div>
+			</section>
+			<section id="api" class="space-y-4">
+				<h2 class="text-xl font-semibold">API Reference</h2>
+				<div class="overflow-auto">
+					<table class="min-w-full divide-y divide-border">
+						<thead>
+							<tr class="bg-muted/50">
+								<th class="py-3 px-4 text-left text-sm font-medium">Property</th>
+								<th class="py-3 px-4 text-left text-sm font-medium">Type</th>
+								<th class="py-3 px-4 text-left text-sm font-medium">Default</th>
+								<th class="py-3 px-4 text-left text-sm font-medium">Description</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-border">
+							<tr>
+								<td class="py-3 px-4">Variant</td>
+								<td class="py-3 px-4 font-mono text-sm">Variant</td>
+								<td class="py-3 px-4"><code>"default"</code></td>
+								<td class="py-3 px-4">
+									Style of badge: <code>default</code>, <code>secondary</code>, <code>destructive</code>, or <code>outline</code>
+								</td>
+							</tr>
+							<tr>
+								<td class="py-3 px-4">Class</td>
+								<td class="py-3 px-4 font-mono text-sm">string</td>
+								<td class="py-3 px-4"><code>""</code></td>
+								<td class="py-3 px-4">Additional CSS class names to apply</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</section>
+		</div>
+	}
+}
