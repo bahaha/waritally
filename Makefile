@@ -32,6 +32,14 @@ tools:
 		curl -sL https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-macos-arm64 -o ./tailwindcss; \
 		chmod +x ./tailwindcss; \
 	fi
+	@if ! command -v goose > /dev/null; then \
+		echo "Installing goose..."; \
+		go install github.com/pressly/goose/v3/cmd/goose@latest; \
+	fi
+	@if ! command -v sqlc > /dev/null; then \
+		echo "Installing sqlc..."; \
+		go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest; \
+	fi
 
 # Generate templ files
 .PHONY: templates
@@ -76,17 +84,12 @@ clean:
 	@rm -f $(BINARY_NAME)
 	@go clean
 
-# Set up initial database (to be implemented)
-.PHONY: db-setup
-db-setup:
-	@echo "Setting up database..."
-	@echo "To be implemented"
-
-# Run database migrations (to be implemented)
+# Run database migrations
 .PHONY: db-migrate
-db-migrate:
+db-migrate: tools
 	@echo "Running migrations..."
-	@echo "To be implemented"
+	@goose -dir ./internal/infra/db/migrations/geo sqlite3 ./internal/infra/db/geo.db up
+
 
 # Default target
 .PHONY: all
