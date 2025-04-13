@@ -1,6 +1,7 @@
 package trips
 
 import (
+	"fmt"
 	country "waritally/internal/country/domain"
 	"waritally/internal/server/middleware"
 	"waritally/pkg/components/svg"
@@ -29,7 +30,7 @@ templ LocationTagsError(countryCode string) {
 			{ button.New(button.ButtonProps().
 				WithVariant(button.Variants.Ghost).
 				WithSize(button.Sizes.Small))... }
-			hx-get={ "/api/locations?country=" + countryCode }
+			hx-get={ fmt.Sprintf("/islands/%s/locations", countryCode) }
 			hx-target="#location-tags"
 			hx-include="#lang"
 		>

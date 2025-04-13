@@ -49,8 +49,9 @@ templ NewTrip(props *props.NewTripProps) {
 				<select
 					name="country"
 					required
+					hx-ext="path-params"
 					hx-trigger="change"
-					hx-get="/api/locations"
+					hx-get="/islands/{country}/locations"
 					hx-target="#location-tags"
 					hx-include="#lang"
 				>

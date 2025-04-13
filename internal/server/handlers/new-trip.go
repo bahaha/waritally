@@ -18,13 +18,20 @@ func renderErrorPage(w http.ResponseWriter, r *http.Request, status int, message
 	templ.Handler(shared.ErrorPage(status, message)).ServeHTTP(w, r)
 }
 
-func HandleNewTripCreation(log logger.Logger, countryRepo country.CountryRepository) http.HandlerFunc {
+func HandleNewTripCreation(
+	log logger.Logger,
+	countryRepo country.CountryRepository,
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		countries, err := countryRepo.GetAll(r.Context())
 		if err != nil {
 			log.Error("new_trip", err, "failed to load countries for new trip form")
-			renderErrorPage(w, r, http.StatusInternalServerError,
-				"We're sorry, but we couldn't load the new trip form right now. Please try again later.")
+			renderErrorPage(
+				w,
+				r,
+				http.StatusInternalServerError,
+				"We're sorry, but we couldn't load the new trip form right now. Please try again later.",
+			)
 			return
 		}
 		props := &props.NewTripProps{Countries: countries}
@@ -34,10 +41,13 @@ func HandleNewTripCreation(log logger.Logger, countryRepo country.CountryReposit
 }
 
 type GetCountryAreasRequest struct {
-	Country string `in:"query=country"`
+	Country string `in:"path=country"`
 }
 
-func HandleGetCountryAreas(log logger.Logger, countryRepo country.CountryRepository) http.HandlerFunc {
+func HandleGetCountryAreas(
+	log logger.Logger,
+	countryRepo country.CountryRepository,
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		input := r.Context().Value(httpin.Input).(*GetCountryAreasRequest)
 		areas, err := countryRepo.GetCountryArea(r.Context(), input.Country)
