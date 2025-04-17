@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/csv"
 	"flag"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 	"unicode"
@@ -17,22 +19,12 @@ import (
 
 // Define structs to represent our data
 type Country struct {
-	ID             string
-	Name           string
 	ISO2           string
 	ISO3           string
-	NumericCode    string
-	PhoneCode      string
-	Capital        string
+	Name           string
 	Currency       string
-	CurrencyName   string
 	CurrencySymbol string
-	TLD            string
-	Native         string
 	Region         string
-	RegionID       string
-	Subregion      string
-	SubregionID    string
 	Nationality    string
 	Timezones      string
 	Latitude       string
@@ -45,11 +37,9 @@ type Country struct {
 
 type State struct {
 	ID          string
-	Name        string
-	CountryID   string
 	CountryCode string
-	CountryName string
 	StateCode   string
+	Name        string
 	Type        string
 	Latitude    string
 	Longitude   string
@@ -60,12 +50,10 @@ type State struct {
 type City struct {
 	ID          string
 	Name        string
-	StateID     string
-	StateCode   string
-	StateName   string
-	CountryID   string
 	CountryCode string
 	CountryName string
+	StateCode   string
+	StateName   string
 	Latitude    string
 	Longitude   string
 	WikiDataID  string
@@ -77,184 +65,58 @@ type TemplateData struct {
 	Countries []Country
 }
 
-// Migration template
-const migrationTemplate = `-- +goose Up
+// Schema (DDL) template - removed UNIQUE constraint from i18n_key fields
+const schemaTemplate = `-- +goose Up
 -- SQL in this section is executed when the migration is applied
 
 -- Create countries table
 CREATE TABLE IF NOT EXISTS countries (
-    id INTEGER PRIMARY KEY,
-    code_iso2 TEXT NOT NULL,
-    code_iso3 TEXT NOT NULL,
-    numeric_code TEXT,
-    phone_code TEXT,
-    capital TEXT,
-    currency TEXT,
-    currency_name TEXT,
-    currency_symbol TEXT,
-    tld TEXT,
-    native TEXT,
-    region TEXT,
-    region_id INTEGER,
-    subregion TEXT,
-    subregion_id INTEGER,
-    nationality TEXT,
+    code_iso2 TEXT PRIMARY KEY CHECK(length(code_iso2) = 2),
+    code_iso3 TEXT NOT NULL CHECK(length(code_iso3) = 3),
+    name TEXT NOT NULL,
+    i18n_key TEXT NOT NULL,
+    currency TEXT NOT NULL,
+    currency_symbol TEXT NOT NULL,
+    region TEXT NOT NULL,
+    nationality TEXT NOT NULL,
     timezones TEXT,
     latitude REAL,
     longitude REAL,
     emoji TEXT,
     emoji_u TEXT,
-    i18n_key TEXT NOT NULL,
-    UNIQUE(code_iso2),
-    UNIQUE(code_iso3),
-    UNIQUE(i18n_key)
+    UNIQUE(code_iso3)
 );
 
 -- Create states table
 CREATE TABLE IF NOT EXISTS states (
     id INTEGER PRIMARY KEY,
-    country_id INTEGER NOT NULL,
-    country_code TEXT,
-    state_code TEXT,
+    country_code TEXT NOT NULL,
+    state_code TEXT NOT NULL,
     name TEXT NOT NULL,
+    i18n_key TEXT NOT NULL,
     type TEXT,
     latitude REAL,
     longitude REAL,
-    i18n_key TEXT NOT NULL,
-    FOREIGN KEY (country_id) REFERENCES countries(id),
-    UNIQUE(i18n_key)
+    FOREIGN KEY (country_code) REFERENCES countries(code_iso2)
 );
 
--- Create cities table
+-- Create cities table with strategic duplication
 CREATE TABLE IF NOT EXISTS cities (
     id INTEGER PRIMARY KEY,
-    country_id INTEGER NOT NULL,
-    state_id INTEGER,
-    state_code TEXT,
-    state_name TEXT,
+    country_code TEXT NOT NULL,
+    country_name TEXT NOT NULL, -- Duplicated for convenience
+    state_code TEXT NOT NULL,
+    state_name TEXT NOT NULL, -- Duplicated to avoid joins
+    name TEXT NOT NULL,
     i18n_key TEXT NOT NULL,
     latitude REAL,
     longitude REAL,
-    wiki_data_id TEXT,
-    FOREIGN KEY (country_id) REFERENCES countries(id),
-    FOREIGN KEY (state_id) REFERENCES states(id),
-    UNIQUE(i18n_key)
+    FOREIGN KEY (country_code) REFERENCES countries(code_iso2),
+    FOREIGN KEY (country_code) REFERENCES states(country_code)
 );
 
--- Create indexes for better query performance
-CREATE INDEX IF NOT EXISTS idx_cities_country_id ON cities(country_id);
-CREATE INDEX IF NOT EXISTS idx_cities_state_id ON cities(state_id);
-CREATE INDEX IF NOT EXISTS idx_states_country_id ON states(country_id);
-
--- Insert countries data
-{{range .Countries}}
--- Country: {{.Name}}
-INSERT INTO countries (
-    id, 
-    code_iso2, 
-    code_iso3, 
-    numeric_code,
-    phone_code,
-    capital,
-    currency,
-    currency_name,
-    currency_symbol,
-    tld,
-    native,
-    region,
-    region_id,
-    subregion,
-    subregion_id,
-    nationality,
-    timezones,
-    latitude,
-    longitude,
-    emoji,
-    emoji_u,
-    i18n_key
-) VALUES (
-    {{.ID}},
-    '{{.ISO2}}',
-    '{{.ISO3}}',
-    '{{.NumericCode}}',
-    '{{.PhoneCode}}',
-    '{{.Capital}}',
-    '{{.Currency}}',
-    '{{.CurrencyName}}',
-    '{{.CurrencySymbol}}',
-    '{{.TLD}}',
-    '{{.Native}}',
-    '{{.Region}}',
-    {{if .RegionID}}{{.RegionID}}{{else}}NULL{{end}},
-    '{{.Subregion}}',
-    {{if .SubregionID}}{{.SubregionID}}{{else}}NULL{{end}},
-    '{{.Nationality}}',
-    '{{.Timezones}}',
-    {{if .Latitude}}{{.Latitude}}{{else}}NULL{{end}},
-    {{if .Longitude}}{{.Longitude}}{{else}}NULL{{end}},
-    '{{.Emoji}}',
-    '{{.EmojiU}}',
-    '{{.I18nKey}}'
-);
-{{end}}
-
--- Insert states data
-{{range $country := .Countries}}
-{{range $state := .States}}
--- State: {{$state.Name}}, Country: {{$country.Name}}
-INSERT INTO states (
-    id,
-    country_id,
-    country_code,
-    state_code,
-    name,
-    type,
-    latitude,
-    longitude,
-    i18n_key
-) VALUES (
-    {{$state.ID}},
-    {{$country.ID}},
-    '{{$state.CountryCode}}',
-    '{{$state.StateCode}}',
-    '{{$state.Name}}',
-    '{{$state.Type}}',
-    {{if $state.Latitude}}{{$state.Latitude}}{{else}}NULL{{end}},
-    {{if $state.Longitude}}{{$state.Longitude}}{{else}}NULL{{end}},
-    '{{$state.I18nKey}}'
-);
-{{end}}
-{{end}}
-
--- Insert cities data
-{{range $country := .Countries}}
-{{range $state := .States}}
-{{range $city := $state.Cities}}
--- City: {{$city.Name}}, State: {{$state.Name}}, Country: {{$country.Name}}
-INSERT INTO cities (
-    id, 
-    country_id,
-    state_id,
-    state_code,
-    state_name,
-    i18n_key, 
-    latitude, 
-    longitude,
-    wiki_data_id
-) VALUES (
-    {{$city.ID}},
-    {{$country.ID}},
-    {{$state.ID}},
-    '{{$state.StateCode}}',
-    '{{$state.Name}}',
-    '{{$city.I18nKey}}',
-    {{if $city.Latitude}}{{$city.Latitude}}{{else}}NULL{{end}},
-    {{if $city.Longitude}}{{$city.Longitude}}{{else}}NULL{{end}},
-    '{{$city.WikiDataID}}'
-);
-{{end}}
-{{end}}
-{{end}}
+-- Create index for common lookups
+CREATE INDEX IF NOT EXISTS idx_cities_country_state ON cities(country_code, state_code);
 
 -- +goose Down
 -- SQL in this section is executed when the migration is rolled back
@@ -262,6 +124,91 @@ DROP TABLE IF EXISTS cities;
 DROP TABLE IF EXISTS states;
 DROP TABLE IF EXISTS countries;
 `
+
+// Country data template with grouped records
+const countryDataTemplate = `-- Country: {{.Name}}
+INSERT INTO countries (
+    code_iso2,
+    code_iso3,
+    name,
+    i18n_key,
+    currency,
+    currency_symbol,
+    region,
+    nationality,
+    timezones,
+    latitude,
+    longitude,
+    emoji,
+    emoji_u
+) VALUES (
+    '{{.ISO2}}',
+    '{{.ISO3}}',
+    '{{.Name}}',
+    '{{.I18nKey}}',
+    '{{.Currency}}',
+    '{{.CurrencySymbol}}',
+    '{{.Region}}',
+    '{{.Nationality}}',
+    '{{.Timezones}}',
+    {{if .Latitude}}{{.Latitude}}{{else}}NULL{{end}},
+    {{if .Longitude}}{{.Longitude}}{{else}}NULL{{end}},
+    '{{.Emoji}}',
+    '{{.EmojiU}}'
+);
+
+{{range $state := .States}}
+-- State: {{$state.Name}}
+INSERT INTO states (
+    id,
+    country_code,
+    state_code,
+    name,
+    i18n_key,
+    type,
+    latitude,
+    longitude
+) VALUES (
+    {{$state.ID}},
+    '{{$.ISO2}}',
+    '{{$state.StateCode}}',
+    '{{$state.Name}}',
+    '{{$state.I18nKey}}',
+    '{{$state.Type}}',
+    {{if $state.Latitude}}{{$state.Latitude}}{{else}}NULL{{end}},
+    {{if $state.Longitude}}{{$state.Longitude}}{{else}}NULL{{end}}
+);
+
+{{range $city := $state.Cities}}
+-- City: {{$city.Name}}
+INSERT INTO cities (
+    id,
+    country_code, 
+    country_name,
+    state_code,
+    state_name,
+    name,
+    i18n_key, 
+    latitude, 
+    longitude
+) VALUES (
+    {{$city.ID}},
+    '{{$.ISO2}}',
+    '{{$.Name}}',
+    '{{$state.StateCode}}',
+    '{{$state.Name}}',
+    '{{$city.Name}}',
+    '{{$city.I18nKey}}',
+    {{if $city.Latitude}}{{$city.Latitude}}{{else}}NULL{{end}},
+    {{if $city.Longitude}}{{$city.Longitude}}{{else}}NULL{{end}}
+);
+{{end}}
+{{end}}
+
+`
+
+// Cache for normalized ASCII strings to reduce conversion overhead
+var asciiCache = sync.Map{}
 
 // Normalize a string for use in i18n keys
 func normalizeForKey(input string) string {
@@ -287,12 +234,70 @@ func normalizeForKey(input string) string {
 	return result
 }
 
+// Convert special characters to ASCII with caching
+func toASCII(input string) string {
+	// Check cache first
+	if cached, ok := asciiCache.Load(input); ok {
+		return cached.(string)
+	}
+
+	// Common replacements for non-ASCII characters
+	replacements := map[string]string{
+		"Ō": "O", "ō": "o",
+		"Ā": "A", "ā": "a",
+		"Ē": "E", "ē": "e",
+		"Ī": "I", "ī": "i",
+		"Ū": "U", "ū": "u",
+		"Ñ": "N", "ñ": "n",
+		"Ç": "C", "ç": "c",
+		"Á": "A", "á": "a",
+		"À": "A", "à": "a",
+		"Ä": "A", "ä": "a",
+		"Â": "A", "â": "a",
+		"É": "E", "é": "e",
+		"È": "E", "è": "e",
+		"Ë": "E", "ë": "e",
+		"Ê": "E", "ê": "e",
+		"Í": "I", "í": "i",
+		"Ì": "I", "ì": "i",
+		"Ï": "I", "ï": "i",
+		"Î": "I", "î": "i",
+		"Ó": "O", "ó": "o",
+		"Ò": "O", "ò": "o",
+		"Ö": "O", "ö": "o",
+		"Ô": "O", "ô": "o",
+		"Ú": "U", "ú": "u",
+		"Ù": "U", "ù": "u",
+		"Ü": "U", "ü": "u",
+		"Û": "U", "û": "u",
+		"Ý": "Y", "ý": "y",
+		"Ÿ": "Y", "ÿ": "y",
+		"Ž": "Z", "ž": "z",
+		"Š": "S", "š": "s",
+		"Č": "C", "č": "c",
+		"Đ": "D", "đ": "d",
+		"Ğ": "G", "ğ": "g",
+		"Ř": "R", "ř": "r",
+		"Ť": "T", "ť": "t",
+		"Ů": "U", "ů": "u",
+	}
+
+	result := input
+	for k, v := range replacements {
+		result = strings.ReplaceAll(result, k, v)
+	}
+
+	// Store in cache
+	asciiCache.Store(input, result)
+	return result
+}
+
 // Escape single quotes in SQL strings
 func escapeSQLString(s string) string {
 	return strings.ReplaceAll(s, "'", "''")
 }
 
-// Parse CSV file with header mapping
+// Parse CSV file with header mapping - using buffered reader for better performance
 func parseCSV(filePath string) ([]map[string]string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -300,7 +305,9 @@ func parseCSV(filePath string) ([]map[string]string, error) {
 	}
 	defer file.Close()
 
-	reader := csv.NewReader(file)
+	// Use buffered reader for better performance
+	bufferedReader := bufio.NewReader(file)
+	reader := csv.NewReader(bufferedReader)
 
 	// Read header row
 	header, err := reader.Read()
@@ -308,12 +315,50 @@ func parseCSV(filePath string) ([]map[string]string, error) {
 		return nil, fmt.Errorf("failed to read CSV header: %w", err)
 	}
 
+	// Pre-allocate results slice with capacity based on file size
+	fileInfo, err := file.Stat()
+	if err == nil {
+		// Estimate number of records based on file size
+		estimatedRecords := int(fileInfo.Size() / 250) // Rough estimate
+		if estimatedRecords > 1000 {
+			estimatedRecords = 1000 // Cap at a reasonable size
+		}
+		results := make([]map[string]string, 0, estimatedRecords)
+
+		// Clean header fields
+		for i := range header {
+			header[i] = strings.TrimSpace(header[i])
+		}
+
+		// Read data rows
+		for lineNum := 2; ; lineNum++ {
+			record, err := reader.Read()
+			if err == io.EOF {
+				return results, nil
+			}
+			if err != nil {
+				return results, fmt.Errorf("error reading line %d: %w", lineNum, err)
+			}
+
+			// Create a map for this row
+			row := make(map[string]string, len(header))
+			for i, value := range record {
+				if i < len(header) {
+					row[header[i]] = strings.TrimSpace(value)
+				}
+			}
+
+			results = append(results, row)
+		}
+	}
+
+	// Fallback if can't get file size
+	var results []map[string]string
+
 	// Clean header fields
 	for i := range header {
 		header[i] = strings.TrimSpace(header[i])
 	}
-
-	var results []map[string]string
 
 	// Read data rows
 	for lineNum := 2; ; lineNum++ {
@@ -344,8 +389,15 @@ func main() {
 	countriesFile := flag.String("countries", "", "Path to countries CSV file (required)")
 	statesFile := flag.String("states", "", "Path to states CSV file (required)")
 	citiesFile := flag.String("cities", "", "Path to cities CSV file (required)")
-	outputFile := flag.String("output", "", "Path to output SQL migration file (optional)")
+	outputDir := flag.String(
+		"outputdir",
+		"internal/infra/db/migrations/geo",
+		"Directory for output SQL files",
+	)
+	outputPrefix := flag.String("output", "", "Prefix for output SQL files (optional)")
 	flag.Parse()
+
+	startTime := time.Now()
 
 	// Validate input files
 	if *countriesFile == "" || *citiesFile == "" || *statesFile == "" {
@@ -354,13 +406,18 @@ func main() {
 		)
 	}
 
-	// Set default output file if not provided
-	if *outputFile == "" {
-		timestamp := time.Now().Format("20060102150405")
-		*outputFile = fmt.Sprintf("%s_countries_cities_migration.sql", timestamp)
+	// Set default output prefix if not provided
+	if *outputPrefix == "" {
+		*outputPrefix = "001"
+	}
+
+	// Ensure output directory exists
+	if err := os.MkdirAll(*outputDir, 0755); err != nil {
+		log.Fatalf("Failed to create output directory %s: %v", *outputDir, err)
 	}
 
 	// Parse the CSV files
+	log.Println("Parsing CSV files...")
 	countriesData, err := parseCSV(*countriesFile)
 	if err != nil {
 		log.Fatalf("Failed to parse countries CSV: %v", err)
@@ -388,30 +445,26 @@ func main() {
 		log.Fatal("No city records found in CSV file")
 	}
 
-	// Process countries
-	countriesMap := make(map[string]Country)
+	log.Printf("Found %d countries, %d states, %d cities in CSV files\n",
+		len(countriesData), len(statesData), len(citiesData))
 
+	// Pre-allocate maps with capacity
+	countriesMap := make(map[string]Country, len(countriesData))
+	countryIdToIso2 := make(map[string]string, len(countriesData))
+
+	// Process countries
+	log.Println("Processing countries...")
 	for _, row := range countriesData {
-		// Generate i18n key
-		i18nKey := fmt.Sprintf("country.%s", normalizeForKey(row["name"]))
+		// Generate i18n key - {country_code}.name
+		i18nKey := fmt.Sprintf("%s.name", strings.ToLower(row["iso2"]))
 
 		country := Country{
-			ID:             row["id"],
 			Name:           escapeSQLString(row["name"]),
 			ISO2:           row["iso2"],
 			ISO3:           row["iso3"],
-			NumericCode:    row["numeric_code"],
-			PhoneCode:      row["phonecode"],
-			Capital:        escapeSQLString(row["capital"]),
 			Currency:       row["currency"],
-			CurrencyName:   escapeSQLString(row["currency_name"]),
 			CurrencySymbol: escapeSQLString(row["currency_symbol"]),
-			TLD:            row["tld"],
-			Native:         escapeSQLString(row["native"]),
 			Region:         escapeSQLString(row["region"]),
-			RegionID:       row["region_id"],
-			Subregion:      escapeSQLString(row["subregion"]),
-			SubregionID:    row["subregion_id"],
 			Nationality:    escapeSQLString(row["nationality"]),
 			Timezones:      escapeSQLString(row["timezones"]),
 			Latitude:       row["latitude"],
@@ -423,50 +476,40 @@ func main() {
 		}
 
 		countriesMap[row["id"]] = country
+		countryIdToIso2[row["id"]] = row["iso2"]
 	}
 
-	// Process states
-	statesMap := make(map[string]State)
-	stateKeyMap := make(map[string]bool) // Track i18n keys to avoid duplicates
+	// Pre-allocate maps for states
+	statesMap := make(map[string]State, len(statesData))
+	stateIdToCode := make(map[string]string, len(statesData))
 
+	// Process states
+	log.Println("Processing states...")
 	for _, row := range statesData {
 		countryID := row["country_id"]
-		countryName := row["country_name"]
+		countryCode := row["country_code"]
+		stateCode := row["state_code"]
 
 		// Skip if missing essential data
-		if countryID == "" || row["name"] == "" {
+		if countryID == "" || row["name"] == "" || countryCode == "" {
 			continue
 		}
 
-		// Generate i18n key - handle empty values properly
-		stateType := row["type"]
-		if stateType == "" || strings.ToLower(stateType) == "null" {
-			stateType = "region" // Default type if not specified or null
-		}
+		// Normalize state name for i18n key
+		normalizedStateName := toASCII(row["name"])
+		normalizedStateKey := normalizeForKey(normalizedStateName)
 
-		// Create base i18n key
-		baseKey := fmt.Sprintf("country.%s.%s.%s",
-			normalizeForKey(countryName),
-			normalizeForKey(stateType),
-			normalizeForKey(row["name"]))
-
-		// Ensure uniqueness by appending a counter if needed
-		i18nKey := baseKey
-		counter := 1
-		for stateKeyMap[i18nKey] {
-			i18nKey = fmt.Sprintf("%s_%d", baseKey, counter)
-			counter++
-		}
-		stateKeyMap[i18nKey] = true
+		// Generate i18n key - {country_code}.{normalized_state_name}.name
+		i18nKey := fmt.Sprintf("%s.%s.name",
+			strings.ToLower(countryCode),
+			normalizedStateKey)
 
 		state := State{
 			ID:          row["id"],
 			Name:        escapeSQLString(row["name"]),
-			CountryID:   countryID,
-			CountryCode: row["country_code"],
-			CountryName: escapeSQLString(row["country_name"]),
-			StateCode:   row["state_code"],
-			Type:        stateType,
+			CountryCode: countryCode,
+			StateCode:   stateCode,
+			Type:        row["type"],
 			Latitude:    row["latitude"],
 			Longitude:   row["longitude"],
 			I18nKey:     i18nKey,
@@ -474,14 +517,18 @@ func main() {
 		}
 
 		statesMap[row["id"]] = state
+		stateIdToCode[row["id"]] = stateCode
 	}
 
-	// Process cities
-	cityKeyMap := make(map[string]bool) // Track i18n keys to avoid duplicates
+	// Create map to track cities per state
+	stateIdToCities := make(map[string][]City)
 
+	// Process cities - first pass: group by state ID
+	log.Println("Processing cities...")
 	for _, row := range citiesData {
 		countryID := row["country_id"]
 		stateID := row["state_id"]
+		countryCode := row["country_code"]
 
 		// Skip if missing essential data
 		if countryID == "" || stateID == "" || row["name"] == "" {
@@ -494,36 +541,26 @@ func main() {
 			continue
 		}
 
-		// Generate i18n key for city - handle null values properly
-		stateType := state.Type
-		if stateType == "" || strings.ToLower(stateType) == "null" {
-			stateType = "region" // Default type if not specified or null
-		}
+		// Normalize the city name for the i18n key
+		normalizedCityName := toASCII(row["name"])
+		normalizedCityKey := normalizeForKey(normalizedCityName)
 
-		// Create base i18n key
-		baseKey := fmt.Sprintf("country.%s.%s.%s.city.%s",
-			normalizeForKey(row["country_name"]),
-			normalizeForKey(stateType),
-			normalizeForKey(state.Name),
-			normalizeForKey(row["name"]))
+		// Normalize state name for i18n key
+		normalizedStateName := toASCII(state.Name)
+		normalizedStateKey := normalizeForKey(normalizedStateName)
 
-		// Ensure uniqueness by appending a counter if needed
-		i18nKey := baseKey
-		counter := 1
-		for cityKeyMap[i18nKey] {
-			i18nKey = fmt.Sprintf("%s_%d", baseKey, counter)
-			counter++
-		}
-		cityKeyMap[i18nKey] = true
+		// Generate i18n key - {country_code}.{normalized_state_name}.{normalized_city_name}.name
+		i18nKey := fmt.Sprintf("%s.%s.%s.name",
+			strings.ToLower(countryCode),
+			normalizedStateKey,
+			normalizedCityKey)
 
 		city := City{
 			ID:          row["id"],
 			Name:        escapeSQLString(row["name"]),
-			StateID:     stateID,
 			StateCode:   state.StateCode,
 			StateName:   escapeSQLString(state.Name),
-			CountryID:   countryID,
-			CountryCode: row["country_code"],
+			CountryCode: countryCode,
 			CountryName: escapeSQLString(row["country_name"]),
 			Latitude:    row["latitude"],
 			Longitude:   row["longitude"],
@@ -531,22 +568,39 @@ func main() {
 			I18nKey:     i18nKey,
 		}
 
-		// Add city to state
-		state.Cities = append(state.Cities, city)
-		statesMap[stateID] = state
+		// Add city to state's cities collection
+		cityList, exists := stateIdToCities[stateID]
+		if !exists {
+			cityList = make([]City, 0, 8) // Pre-allocate with reasonable capacity
+		}
+		stateIdToCities[stateID] = append(cityList, city)
+	}
+
+	// Second pass: attach cities to states
+	for stateID, cities := range stateIdToCities {
+		if state, exists := statesMap[stateID]; exists {
+			// Sort cities by name
+			sort.Slice(cities, func(i, j int) bool {
+				return cities[i].Name < cities[j].Name
+			})
+			state.Cities = cities
+			statesMap[stateID] = state
+		}
 	}
 
 	// Organize data for template
+	log.Println("Organizing data for output...")
 	var countryList []Country
-	processedStates := make(map[string]bool) // Track processed state IDs
+	processedStates := make(map[string]bool, len(statesMap)) // Track processed state IDs
 
 	for id, country := range countriesMap {
 		// Find all states for this country
 		var countryStates []State
-		for _, state := range statesMap {
-			if state.CountryID == id && !processedStates[state.ID] {
+		for stateId, state := range statesMap {
+			countryCodeFromId := countryIdToIso2[id]
+			if state.CountryCode == countryCodeFromId && !processedStates[stateId] {
 				countryStates = append(countryStates, state)
-				processedStates[state.ID] = true // Mark as processed
+				processedStates[stateId] = true // Mark as processed
 			}
 		}
 
@@ -554,13 +608,6 @@ func main() {
 		sort.Slice(countryStates, func(i, j int) bool {
 			return countryStates[i].Name < countryStates[j].Name
 		})
-
-		// Sort cities within states
-		for i := range countryStates {
-			sort.Slice(countryStates[i].Cities, func(a, b int) bool {
-				return countryStates[i].Cities[a].Name < countryStates[i].Cities[b].Name
-			})
-		}
 
 		country.States = countryStates
 		countryList = append(countryList, country)
@@ -571,33 +618,63 @@ func main() {
 		return countryList[i].Name < countryList[j].Name
 	})
 
-	// Set up template data
-	templateData := TemplateData{
-		Countries: countryList,
+	// Schema file (schema.sql)
+	log.Println("Generating schema file...")
+	schemaPath := filepath.Join(*outputDir, fmt.Sprintf("%s_schema.sql", *outputPrefix))
+	absSchemaPath, err := filepath.Abs(schemaPath)
+	if err != nil {
+		log.Fatalf("Failed to resolve schema path: %v", err)
 	}
 
-	// Create output file
-	outPath, err := filepath.Abs(*outputFile)
+	schemaFile, err := os.Create(absSchemaPath)
 	if err != nil {
-		log.Fatalf("Failed to resolve output path: %v", err)
+		log.Fatalf("Failed to create schema file: %v", err)
+	}
+	defer schemaFile.Close()
+
+	// Write schema directly (no template execution)
+	_, err = schemaFile.WriteString(schemaTemplate)
+	if err != nil {
+		log.Fatalf("Failed to write schema: %v", err)
 	}
 
-	outFile, err := os.Create(outPath)
+	// Parse the country template
+	countryTmpl, err := template.New("country").Parse(countryDataTemplate)
 	if err != nil {
-		log.Fatalf("Failed to create output file: %v", err)
-	}
-	defer outFile.Close()
-
-	// Parse the template
-	tmpl, err := template.New("migration").Parse(migrationTemplate)
-	if err != nil {
-		log.Fatalf("Failed to parse template: %v", err)
+		log.Fatalf("Failed to parse country template: %v", err)
 	}
 
-	// Execute template
-	err = tmpl.Execute(outFile, templateData)
-	if err != nil {
-		log.Fatalf("Failed to execute template: %v", err)
+	// Create a data subdirectory for country files
+	dataDir := filepath.Join(*outputDir, "data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		log.Fatalf("Failed to create data directory %s: %v", dataDir, err)
+	}
+
+	// Generate data by country files
+	log.Println("Generating country data files...")
+	for _, country := range countryList {
+		// Skip countries without states
+		if len(country.States) == 0 {
+			continue
+		}
+
+		// Create a file for this country
+		countryFileName := filepath.Join(
+			dataDir,
+			fmt.Sprintf("%s_%s_data.sql", *outputPrefix, strings.ToLower(country.ISO2)),
+		)
+		countryFile, err := os.Create(countryFileName)
+		if err != nil {
+			log.Fatalf("Failed to create country file %s: %v", countryFileName, err)
+		}
+
+		// Write country data to file
+		err = countryTmpl.Execute(countryFile, country)
+		if err != nil {
+			countryFile.Close()
+			log.Fatalf("Failed to write country data: %v", err)
+		}
+		countryFile.Close()
 	}
 
 	// Count statistics
@@ -610,13 +687,28 @@ func main() {
 		}
 	}
 
-	fmt.Printf("Successfully generated migration file: %s\n\n", outPath)
-	fmt.Printf("Statistics:\n")
+	processingTime := time.Since(startTime)
+
+	fmt.Printf("Successfully generated SQL files with prefix: %s\n\n", *outputPrefix)
+	fmt.Printf("Files generated:\n")
+	fmt.Printf("- Schema: %s\n", schemaPath)
+	fmt.Printf(
+		"- Country data files: %s/data/%s_XX_data.sql (one per country)\n",
+		*outputDir,
+		*outputPrefix,
+	)
+
+	fmt.Printf("\nStatistics:\n")
 	fmt.Printf("- Countries: %d\n", len(countryList))
 	fmt.Printf("- States/Provinces: %d\n", totalStates)
 	fmt.Printf("- Cities: %d\n", totalCities)
+	fmt.Printf("- Processing time: %s\n", processingTime)
+
+	fmt.Printf("\nOutput location:\n")
+	fmt.Printf("- Schema file: %s\n", absSchemaPath)
+	fmt.Printf("- Data directory: %s\n", dataDir)
 
 	fmt.Printf("\nNext steps:\n")
-	fmt.Printf("1. Copy the migration file to your project's migrations directory\n")
-	fmt.Printf("2. Run the migration with Goose: goose up\n")
+	fmt.Printf("1. Use the schema file for sqlc code generation\n")
+	fmt.Printf("2. Use the country data files to populate your database tables\n")
 }

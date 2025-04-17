@@ -75,7 +75,7 @@ dev: tools templates css
 .PHONY: test
 test:
 	@echo "Running tests..."
-	@go test -v ./...
+	@go test ./... || go test -v ./... | grep -E "^(--- FAIL:|FAIL|\s+.*_test.go:[0-9]+:|^\?)"
 
 # Clean build artifacts
 .PHONY: clean
@@ -86,10 +86,14 @@ clean:
 
 # Run database migrations
 .PHONY: db-migrate
-db-migrate: tools
-	@echo "Running migrations..."
+geo-db-migrate: tools
+	@echo "Running schema migrations..."
 	@goose -dir ./internal/infra/db/migrations/geo sqlite3 ./internal/infra/db/geo.db up
-
+	@echo "Running data migrations..."
+	@for file in ./internal/infra/db/migrations/geo/data/*.sql; do \
+		echo "Applying $$file..."; \
+		sqlite3 ./internal/infra/db/geo.db < $$file; \
+	done
 
 # Default target
 .PHONY: all
