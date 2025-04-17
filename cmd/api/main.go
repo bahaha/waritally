@@ -9,8 +9,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	country "waritally/internal/country/infrastructure"
+	country "waritally/internal/country/infrastructure/sqlc"
 	"waritally/internal/infra"
+	"waritally/internal/infra/db"
 	"waritally/internal/server"
 	"waritally/internal/server/logger"
 
@@ -49,7 +50,11 @@ func run(
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	countryRepo := country.NewStaticCountryRepository()
+	dbStore, err := db.NewStore(os.Getenv)
+	if err != nil {
+		return fmt.Errorf("failed to load database store: %w", err)
+	}
+	countryRepo := country.NewCountryRepository(dbStore.GeoDB)
 
 	srv := server.NewServer(cfg, log, countryRepo)
 

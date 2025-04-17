@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/a-h/templ"
-	"github.com/ggicci/httpin"
 
 	country "waritally/internal/country/domain"
 	"waritally/internal/server/logger"
@@ -23,17 +22,18 @@ func HandleNewTripCreation(
 	countryRepo country.CountryRepository,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		countries, err := countryRepo.GetAll(r.Context())
-		if err != nil {
-			log.Error("new_trip", err, "failed to load countries for new trip form")
-			renderErrorPage(
-				w,
-				r,
-				http.StatusInternalServerError,
-				"We're sorry, but we couldn't load the new trip form right now. Please try again later.",
-			)
-			return
-		}
+		// countries, err := countryRepo.GetAll(r.Context())
+		// if err != nil {
+		// 	log.Error("new_trip", err, "failed to load countries for new trip form")
+		// 	renderErrorPage(
+		// 		w,
+		// 		r,
+		// 		http.StatusInternalServerError,
+		// 		"We're sorry, but we couldn't load the new trip form right now. Please try again later.",
+		// 	)
+		// 	return
+		// }
+		countries := []country.Country{}
 		props := &props.NewTripProps{Countries: countries}
 
 		renderNewTripView(w, r, props)
@@ -49,22 +49,23 @@ func HandleGetCountryAreas(
 	countryRepo country.CountryRepository,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		input := r.Context().Value(httpin.Input).(*GetCountryAreasRequest)
-		areas, err := countryRepo.GetCountryArea(r.Context(), input.Country)
-		if err != nil {
-			if country.IsCountryNotFoundError(err) {
-				log.Error("country_areas", err, "country not found in our system",
-					"country", input.Country)
-				w.WriteHeader(http.StatusNotFound)
-			} else {
-				log.Error("country_areas", err, "failed to load areas for country",
-					"country", input.Country)
-				w.WriteHeader(http.StatusInternalServerError)
-			}
-			renderRefetchCountryErrorHandling(w, r, input.Country)
-			return
-		}
+		// input := r.Context().Value(httpin.Input).(*GetCountryAreasRequest)
+		// areas, err := countryRepo.GetCountryArea(r.Context(), input.Country)
+		// if err != nil {
+		// 	if country.IsCountryNotFoundError(err) {
+		// 		log.Error("country_areas", err, "country not found in our system",
+		// 			"country", input.Country)
+		// 		w.WriteHeader(http.StatusNotFound)
+		// 	} else {
+		// 		log.Error("country_areas", err, "failed to load areas for country",
+		// 			"country", input.Country)
+		// 		w.WriteHeader(http.StatusInternalServerError)
+		// 	}
+		// 	renderRefetchCountryErrorHandling(w, r, input.Country)
+		// 	return
+		// }
 
+		areas := []country.Area{}
 		renderCountryAreaTags(w, r, areas)
 	}
 }

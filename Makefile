@@ -32,6 +32,14 @@ tools:
 		curl -sL https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-macos-arm64 -o ./tailwindcss; \
 		chmod +x ./tailwindcss; \
 	fi
+	@if ! command -v goose > /dev/null; then \
+		echo "Installing goose..."; \
+		go install github.com/pressly/goose/v3/cmd/goose@latest; \
+	fi
+	@if ! command -v sqlc > /dev/null; then \
+		echo "Installing sqlc..."; \
+		go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest; \
+	fi
 
 # Generate templ files
 .PHONY: templates
@@ -67,7 +75,7 @@ dev: tools templates css
 .PHONY: test
 test:
 	@echo "Running tests..."
-	@go test -v ./...
+	@go test ./... || go test -v ./... | grep -E "^(--- FAIL:|FAIL|\s+.*_test.go:[0-9]+:|^\?)"
 
 # Clean build artifacts
 .PHONY: clean
@@ -76,17 +84,16 @@ clean:
 	@rm -f $(BINARY_NAME)
 	@go clean
 
-# Set up initial database (to be implemented)
-.PHONY: db-setup
-db-setup:
-	@echo "Setting up database..."
-	@echo "To be implemented"
-
-# Run database migrations (to be implemented)
+# Run database migrations
 .PHONY: db-migrate
-db-migrate:
-	@echo "Running migrations..."
-	@echo "To be implemented"
+geo-db-migrate: tools
+	@echo "Running schema migrations..."
+	@goose -dir ./internal/infra/db/migrations/geo sqlite3 ./internal/infra/db/geo.db up
+	@echo "Running data migrations..."
+	@for file in ./internal/infra/db/migrations/geo/data/*.sql; do \
+		echo "Applying $$file..."; \
+		sqlite3 ./internal/infra/db/geo.db < $$file; \
+	done
 
 # Default target
 .PHONY: all

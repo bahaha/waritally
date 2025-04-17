@@ -12,6 +12,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/go-chi/cors v1.2.1
 	github.com/joho/godotenv v1.5.1
+	github.com/mattn/go-sqlite3 v1.14.28
 	github.com/nicksnyder/go-i18n/v2 v2.6.0
 	github.com/rs/xid v1.5.0
 	github.com/rs/zerolog v1.33.0

@@ -1,0 +1,19 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    schema: "internal/infra/db/migrations/geo"
+    queries: "internal/country/query.sql"
+    gen:
+      go:
+        package: "sqlc"
+        out: "internal/country/infrastructure/sqlc"
+        # Add other options as needed, e.g., emit_pointers_for_null_types, etc.
+# Add other packages/domains here as your project grows
+# - engine: "sqlite"
+#   schema: "infra/db/migrations/user"
+#   queries: "internal/user/query.sql"
+#   gen:
+#     go:
+#       package: "sqlc"
+#       out: "internal/user/sqlc"
+
