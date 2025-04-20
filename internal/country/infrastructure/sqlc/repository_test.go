@@ -66,8 +66,6 @@ func TestFindCountryByCode(t *testing.T) {
 			if country.Currency == "" {
 				t.Error("expected non-empty currency")
 			}
-
-			t.Logf("Successfully retrieved country: %+v", country)
 		})
 	}
 }

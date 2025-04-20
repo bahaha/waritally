@@ -4,6 +4,8 @@
 BINARY_NAME=main
 MAIN_PACKAGE=./cmd/api
 GOFLAGS=-ldflags="-s -w"
+APP_DB=./internal/infra/db/app.db
+GEO_DB=./internal/infra/db/geo.db
 
 # Environment
 ENV_FILE=.env
@@ -85,14 +87,23 @@ clean:
 	@go clean
 
 # Run database migrations
-.PHONY: db-migrate
+.PHONY: geo-db-migrate
 geo-db-migrate: tools
-	@echo "Running schema migrations..."
-	@goose -dir ./internal/infra/db/migrations/geo sqlite3 ./internal/infra/db/geo.db up
+	@echo "Running Geo schema migrations..."
+	@goose -dir ./internal/infra/db/migrations/geo sqlite3 $(GEO_DB) up
 	@echo "Running data migrations..."
 	@for file in ./internal/infra/db/migrations/geo/data/*.sql; do \
 		echo "Applying $$file..."; \
-		sqlite3 ./internal/infra/db/geo.db < $$file; \
+		sqlite3 $(GEO_DB) < $$file; \
+	done
+
+.PHONY: db-migrate
+db-migrate: tools
+	@echo "Running schema migrations..."
+	@goose -dir ./internal/infra/db/migrations/trip sqlite3 $(APP_DB) up
+	@for file in ./internal/infra/db/migrations/trip/data/*.sql; do \
+		echo "Applying $$file..."; \
+		sqlite3 $(APP_DB) < $$file; \
 	done
 
 # Default target

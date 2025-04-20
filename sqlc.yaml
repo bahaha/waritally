@@ -7,6 +7,14 @@ sql:
       go:
         package: "sqlc"
         out: "internal/country/infrastructure/sqlc"
+  - engine: "sqlite"
+    schema: "internal/infra/db/migrations/trip"
+    queries: "internal/trip/query.sql"
+    gen:
+      go:
+        package: "sqlc"
+        out: "internal/trip/infrastructure/sqlc"
+        emit_pointers_for_null_types: true
         # Add other options as needed, e.g., emit_pointers_for_null_types, etc.
 # Add other packages/domains here as your project grows
 # - engine: "sqlite"
