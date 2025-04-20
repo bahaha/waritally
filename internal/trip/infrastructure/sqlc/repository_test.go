@@ -79,8 +79,8 @@ func TestGetPopularCountriesForTravel(t *testing.T) {
 		tw := countries[0]
 		assert.Equal(t, "TW", tw.Code)
 		assert.Equal(t, "tw.name", tw.Name)
-		assert.Equal(t, "TWD", tw.Currency)
-		assert.Equal(t, "$", tw.CurrencySymbol)
+		assert.Equal(t, "TWD", tw.Currency.Code)
+		assert.Equal(t, "$", tw.Currency.Symbol)
 		assert.Equal(t, &TW_FLAG, tw.Emoji)
 	})
 }

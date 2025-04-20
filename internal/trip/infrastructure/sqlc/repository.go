@@ -32,11 +32,13 @@ func (r *SqlcTripRepository) GetPopularCountriesForTrip(
 	countries := make([]domain.Country, len(result))
 	for i, country := range result {
 		countries[i] = domain.Country{
-			Code:           country.DestinationCountryCode,
-			Name:           country.DestinationI18nKey,
-			Currency:       country.DestinationCurrency,
-			CurrencySymbol: country.DestinationCurrencySymbol,
-			Emoji:          country.DestinationEmoji,
+			Code: country.DestinationCountryCode,
+			Name: country.DestinationI18nKey,
+			Currency: domain.Currency{
+				Code:   country.DestinationCurrency,
+				Symbol: country.DestinationCurrencySymbol,
+			},
+			Emoji: country.DestinationEmoji,
 		}
 	}
 

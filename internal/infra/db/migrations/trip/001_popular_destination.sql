@@ -1,5 +1,5 @@
 -- +goose Up
-CREATE TABLE popular_travel_countries (
+CREATE TABLE IF NOT EXISTS popular_travel_countries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     traveler_country_code TEXT CHECK(length(traveler_country_code) = 2),
     destination_country_code TEXT NOT NULL CHECK(length(destination_country_code) = 2),
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS travel_areas (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     i18n_key TEXT NOT NULL,
-    type TEXT NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('region', 'landmark')),
     country_code TEXT NOT NULL CHECK(length(country_code) = 2),
     latitude REAL,
     longitude REAL
